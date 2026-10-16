@@ -148,6 +148,8 @@ uv sync
 - Test: `{a.test_cmd}`
 - Lint: `{a.lint_cmd}`
 - Before changing anything, read `.ds/manifest.toml`: it says which standards are in force here.
+- Query the code graph before reading files, and check a symbol's references with the LSP tools
+  before changing it (ds-next registers both when they are installed).
 
 <!-- ds:inherited canon {today} -->
 ## Standards

@@ -103,6 +103,21 @@ they ask unless the form already approved them. An approval shows the whole requ
 question at a time even when Cortex makes parallel calls, and takes only an explicit `y`, `a` or
 `n`: Enter alone asks again.
 
+## Code intelligence
+
+When installed, ds-next also gives Cortex three code tools. Each is optional, and none is installed by ds-next.
+
+| Server | Tool | Auto-approved | Asks |
+|---|---|---|---|
+| `graph` | [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) 0.11.0, analysis profile | every tool it serves (search, trace callers, snippets, outlines) | nothing (no edits served) |
+| `lsp` | [Serena](https://github.com/oraios/serena) 1.7.0 | find symbol, references, declaration, implementations, diagnostics | replace, insert, rename, delete, memory writes |
+| `ds.snowflake_search` | `cortex search` | docs, catalog objects, table details | nothing |
+
+The graph is refreshed while Cortex connects, and its watcher keeps it current during a session.
+Install them without their own installers, which reconfigure every agent on the machine:
+download the codebase-memory-mcp release, verify it against `checksums.txt`, and copy only the
+binary to `~/.local/bin`; `uv tool install serena-agent==1.7.0`.
+
 ## Without the model
 
 The same code, for scripts, hooks and CI:

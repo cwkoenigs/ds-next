@@ -6,6 +6,7 @@ scaffold.write. Read-only tools are pre-approved; writes go through the UI's per
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import json
 import re
@@ -23,12 +24,12 @@ from cortex_agent_sdk.cortexcode import (
     tool,
 )
 
-from . import reconcile, scaffold
+from . import codetools, reconcile, scaffold
 from .kb import Canon, Skills
 
 SERVER = "ds"
 READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status",
-             "scaffold_list", "scaffold_get", "block_list", "block_get")
+             "scaffold_list", "scaffold_get", "block_list", "block_get", "snowflake_search")
 WRITES = ("scaffold_project", "capture")
 READ_ONLY_IDS = {f"mcp__{SERVER}__{t}" for t in READ_ONLY}
 
@@ -46,7 +47,7 @@ def _text(s: str, error: bool = False) -> dict[str, Any]:
     return out
 
 
-def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
+def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None) -> list:
     # (scaffold id, version, template hash) the model has fetched this session; scaffold_project
     # accepts only one of these, so the code always comes from a scaffold the model looked at
     fetched: set[tuple[str, int, str]] = set()
@@ -180,6 +181,14 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
                      f"requirements added: {', '.join(done['requires']) or '-'} (run uv sync)"
                      + (f"\nadd by hand, no one-line list found: {', '.join(done['manual'])}" if done["manual"] else ""))
 
+    @tool("snowflake_search", "Search Snowflake: kind 'docs' (product documentation), 'object' (tables, "
+          "views, schemas... in this account's catalog) or 'table-details' (columns, joins, usage for "
+          "named tables). Read-only.", {"kind": str, "query": str})
+    async def snowflake_search(args):
+        text, err = await asyncio.to_thread(codetools.snowflake_search, args.get("kind", ""),
+                                            args.get("query", ""), connection)
+        return _text(text, error=err)
+
     @tool("capture", "Draft a proposed canon standard from something learned in this session "
           "(a gotcha, a decision, a pattern). Writes a draft for review; never edits the canon.", {
               "type": "object",
@@ -215,7 +224,22 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
                      f"(the so-capture skill does it), then run scripts/build_index.py.")
 
     return [canon_list, canon_read, skills_list, skill_read, project_status, scaffold_list, scaffold_get,
-            scaffold_project, block_list, block_get, block_add, capture]
+            scaffold_project, block_list, block_get, block_add, snowflake_search, capture]
+
+
+def code_tools(cwd: Path) -> str:
+    """The prompt lines for whichever code-intelligence tools are installed."""
+    servers = codetools.mcp_servers(cwd)
+    lines = []
+    if codetools.GRAPH in servers:
+        lines.append(f"- Query the code graph before reading files: `graph` tools search_graph, search_code and "
+                     f"trace_path find what already exists and who calls it (project "
+                     f"\"{codetools.graph_project(cwd)}\"). Reuse what it finds instead of rewriting it.")
+    if codetools.LSP in servers:
+        lines.append("- Before changing or removing a symbol, use the `lsp` tools find_symbol and "
+                     "find_referencing_symbols to see every use of it.")
+    lines.append("- For Snowflake questions (docs, tables, columns), use snowflake_search before guessing.")
+    return "\n".join(lines)
 
 
 def system_prompt(cwd: Path, canon: Canon, skills: Skills) -> str:
@@ -250,6 +274,7 @@ Rules:
   than writing your own; import it from the package. Before building anything, read the gotchas
   (canon_list marks them) whose tags match the work: they are mistakes already made here once.
 - When a skill fits the request, skill_read it and follow it.
+{code_tools(cwd)}
 - When the session uncovers something the team should remember, offer to capture it.
 - Be brief. This is a terminal.
 
@@ -274,13 +299,16 @@ class Agent:
         self.effort = effort      # low keeps the interview quick; /effort or --effort raises it
         self.session_id: str | None = None
         self._resume: str | None = None
+        self.index_summary = ""
         self._client: CortexCodeSDKClient | None = None
 
     def options(self) -> CortexCodeAgentOptions:
-        server = create_sdk_mcp_server(SERVER, tools=tools(self.canon, self.skills, self.cwd))
+        server = create_sdk_mcp_server(SERVER, tools=tools(self.canon, self.skills, self.cwd, self.connection))
+        code = codetools.mcp_servers(self.cwd)
+        self._read_only = READ_ONLY_IDS | codetools.read_only_ids(code)
         return CortexCodeAgentOptions(
             cwd=str(self.cwd),
-            mcp_servers={SERVER: server},
+            mcp_servers={SERVER: server, **code},
             # No allowed_tools: Cortex treats that list as exclusive (everything else is blocked
             # before can_use_tool is asked). Read-only ds tools are approved in _permit instead.
             append_system_prompt=system_prompt(self.cwd, self.canon, self.skills),
@@ -295,7 +323,7 @@ class Agent:
         """Cortex asks with a kind ("MCP", "Bash", ...) and a resource string whose first line
         names the MCP tool. Reading the knowledge base never needs a human."""
         resource = str(inp.get("resource", "")) if isinstance(inp, dict) else ""
-        if tool_name == "MCP" and resource.split("\n", 1)[0].strip() in READ_ONLY_IDS:
+        if tool_name == "MCP" and resource.split("\n", 1)[0].strip() in getattr(self, "_read_only", READ_ONLY_IDS):
             return PermissionResultAllow()
         if self.ask_permission is None:
             return PermissionResultDeny(message="No one is here to approve this call.")
@@ -306,9 +334,17 @@ class Agent:
         return self._client is not None
 
     async def connect(self) -> None:
+        """Start Cortex and, at the same time, refresh the code graph, so the first query is current."""
         if self._client is None:
             client = CortexCodeSDKClient(self.options())
+            # The SDK's connection lives in an anyio task group that must be entered and exited in
+            # the same task, so connect() runs here, never inside gather() or a new task: only the
+            # indexing runs alongside, in a thread. [[gotcha-cortex-sdk]]
+            refresh = (asyncio.ensure_future(asyncio.to_thread(codetools.index, self.cwd))
+                       if codetools.graph_bin() and (self.cwd / ".git").exists() else None)
             await client.connect()
+            if refresh is not None:
+                self.index_summary = await refresh
             self._client = client
 
     async def turn(self, prompt: str) -> AsyncIterator[Message]:

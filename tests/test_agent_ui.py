@@ -149,3 +149,9 @@ def test_asks_detects_questions_with_trailing_examples():
     assert asks('What does this package do? One line is enough (e.g., "CLI tool for X").')
     assert asks("Create it?")
     assert not asks("Project created at clark-test/. 16 standards adopted.")
+
+
+def test_tool_names_from_other_servers():
+    from ds_next.ui import _short
+    assert (_short("mcp__ds__canon_read"), _short("mcp__graph__trace_path"), _short("bash")) == (
+        "canon_read", "graph.trace_path", "Bash")

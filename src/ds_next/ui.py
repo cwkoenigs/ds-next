@@ -68,9 +68,13 @@ COMMANDS = {
 # ---------------------------------------------------------------- rendering (pure, testable)
 
 def _short(name: str) -> str:
+    """ds tools by their own name, other MCP servers' tools as server.tool, built-ins capitalised."""
     prefix = f"mcp__{SERVER}__"
     if name.startswith(prefix):
         return name[len(prefix):]
+    if name.startswith("mcp__") and name.count("__") >= 2:
+        _, server, tool_name = name.split("__", 2)
+        return f"{server}.{tool_name}"
     return name[:1].upper() + name[1:]
 
 
