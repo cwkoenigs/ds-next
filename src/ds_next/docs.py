@@ -29,9 +29,14 @@ def _category(d: Path, label: str, position: int) -> None:
 
 def _link_pointers(text: str, canon: Canon, prefix: str) -> str:
     def sub(m):
-        sid = m.group(1)
+        sid, pin = m.group(1), m.group(2)
         std = canon.standards.get(sid)
-        return f"[{std.title}]({prefix}standards/{sid}.md)" if std else m.group(0)
+        if std is None:
+            return m.group(0)
+        # the site holds only the current text, so a pin to an older version says so instead of
+        # silently presenting the newer standard as the one this repo chose
+        note = f" (pinned v{pin}; the canon is now v{std.version})" if pin and int(pin) != std.version else ""
+        return f"[{std.title}]({prefix}standards/{sid}.md){note}"
     return POINTER_RE.sub(sub, text)
 
 

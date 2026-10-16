@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import keyword
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -198,7 +199,7 @@ def _hook_text() -> str:
     return f"""#!/bin/sh
 # ds:derived ds-next hooks. Pending standards never block; broken pointers and a bad manifest do.
 DS="$(command -v ds-next 2>/dev/null)"
-[ -z "$DS" ] && [ -x {json_str(fallback)} ] && DS={json_str(fallback)}
+[ -z "$DS" ] && [ -x {shlex.quote(fallback)} ] && DS={shlex.quote(fallback)}
 if [ -z "$DS" ]; then
   echo "ds: ds-next not found, so reconcile did not run. Install it (uv tool install ds-next) or put it on PATH." >&2
   exit 0
@@ -207,16 +208,30 @@ exec "$DS" reconcile --quiet
 """
 
 
-def install_hook(repo: Path) -> Path | None:
-    hooks = repo / ".git" / "hooks"
-    if hooks.is_symlink() or not hooks.is_dir():
-        return None
+def install_hook(repo: Path) -> str | None:
+    """Write the pre-push hook where git will actually run it. Returns why it could not, or None.
+
+    Git decides where hooks live (core.hooksPath can move them), so ask git, and write only
+    inside this repo's own .git, never through a symbolic link."""
+    repo = repo.resolve()
+    git_dir = repo / ".git"
+    if git_dir.is_symlink() or not git_dir.is_dir():
+        return f"{git_dir} is not this repo's own git directory"
+    r = subprocess.run(["git", "-C", str(repo), "rev-parse", "--git-path", "hooks"],
+                       capture_output=True, text=True, check=False)
+    hooks = (repo / r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else git_dir / "hooks"
+    if hooks.is_symlink():
+        return f"{hooks} is a symbolic link"
+    hooks = hooks.resolve()
+    if git_dir.resolve() not in (hooks, *hooks.parents):
+        return f"git runs hooks from {hooks} (core.hooksPath), outside this repo, so it was not installed there"
+    hooks.mkdir(exist_ok=True)
     hook = hooks / "pre-push"
     if hook.is_symlink():          # never write through a link to somewhere else
         hook.unlink()
     hook.write_text(_hook_text())
     hook.chmod(0o755)
-    return hook
+    return None
 
 
 def _inside(dest: Path, rel: str) -> Path:
@@ -252,6 +267,8 @@ def write(a: Answers, dest: Path, canon: Canon | None = None, skills: Skills | N
     dest = dest.resolve()
     if dest.exists() and any(p.name != ".git" for p in dest.iterdir()):
         raise FileExistsError(f"{dest} is not empty")
+    if (dest / ".git").is_symlink():
+        raise ValueError(f"refusing to write into {dest}: its .git is a symbolic link")
     files = render(a, canon or Canon(), skills or Skills())
     targets = {rel: _inside(dest, rel) for rel in files}      # check every path before writing any
     for rel, text in files.items():
@@ -264,7 +281,10 @@ def write(a: Answers, dest: Path, canon: Canon | None = None, skills: Skills | N
                              capture_output=True, text=True, check=False).stdout.strip()
         if Path(top).resolve() != dest:     # never stage into a parent repository
             raise ScaffoldError(f"files are in {dest}, but git resolves it to {top or 'no repository'}")
-        install_hook(dest)
+        hook_problem = install_hook(dest)
         _git(dest, "add", "-A")
         _git(dest, "commit", "-q", "-m", f"Scaffold {a.name} from the canon with ds-next")
+        if hook_problem:
+            raise ScaffoldError(f"{dest} is created and committed, but the pre-push hook is not "
+                                f"installed: {hook_problem}")
     return sorted(files)

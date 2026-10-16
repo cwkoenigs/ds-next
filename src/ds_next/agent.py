@@ -155,17 +155,20 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
     async def capture(args):
         title = " ".join(str(args["title"]).split())          # front matter is one line per key
         slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:50].strip("-") or "capture"
-        base = reconcile.find_repo(cwd) or cwd
+        base = (reconcile.find_repo(cwd) or cwd).resolve()
         folder = base / ".ds" / "captures"
-        if folder.is_symlink():
-            return _text(f"not written: {folder} is a symbolic link", error=True)
+        if (base / ".ds").is_symlink() or folder.is_symlink():
+            return _text(f"not written: {base / '.ds'} or its captures folder is a symbolic link", error=True)
         folder.mkdir(parents=True, exist_ok=True)
+        if base not in folder.resolve().parents:
+            return _text(f"not written: {folder} resolves outside {base}", error=True)
         applies = json.dumps(args.get("applies_to") or ["*"])
-        text = (f"---\nid: {slug}\nversion: 1\ntitle: {title}\napplies_to: {applies}\n"
-                f"owner: {scaffold._git_user()}\nstatus: proposed\ndate: {dt.date.today()}\n---\n\n"
-                f"# {title}\n\n{str(args['body']).strip()}\n")
         for n in range(1, 100):                # never overwrite an earlier draft, or follow a link
-            path = folder / (f"{slug}.md" if n == 1 else f"{slug}-{n}.md")
+            sid = slug if n == 1 else f"{slug}-{n}"     # the canon id matches the file, so both can publish
+            path = folder / f"{sid}.md"
+            text = (f"---\nid: {sid}\nversion: 1\ntitle: {title}\napplies_to: {applies}\n"
+                    f"owner: {scaffold._git_user()}\nstatus: proposed\ndate: {dt.date.today()}\n---\n\n"
+                    f"# {title}\n\n{str(args['body']).strip()}\n")
             try:
                 with open(path, "x") as f:  # noqa: ASYNC230 - one small file; "x" refuses to overwrite
                     f.write(text)

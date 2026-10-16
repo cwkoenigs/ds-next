@@ -96,10 +96,13 @@ def json_str(s: str) -> str:
     return json.dumps(s, ensure_ascii=False).replace("\x7f", "\\u007f")
 
 
+PLACEHOLDER_RE = re.compile(r"\{\{([a-z_]+)\}\}")
+
+
 def _fill(text: str, values: dict[str, str]) -> str:
-    for k, v in values.items():
-        text = text.replace("{{" + k + "}}", v)
-    return text
+    """One pass over the template: a value is never searched again, so user text that happens to
+    contain `{{test_cmd}}` stays literal instead of pulling in another, unescaped value."""
+    return PLACEHOLDER_RE.sub(lambda m: values.get(m.group(1), m.group(0)), text)
 
 
 class CanonError(ValueError):

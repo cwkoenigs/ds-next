@@ -287,3 +287,92 @@ def test_errors_survive_mcp_dispatch(tmp_path, canon, skills):
     req = CallToolRequest(method="tools/call", params=CallToolRequestParams(name="canon_read", arguments={"id": "nope"}))
     result = asyncio.run(handler(req))
     assert result.root.content[0].text.startswith("ERROR:")    # readable even though the flag is lost
+
+
+# -- second Codex review, 2026-10-16
+
+def test_ancestor_symlinks_are_refused(tmp_path, canon, skills):
+    other = tmp_path / "other-repo"
+    subprocess.run(["git", "init", "-q", str(other)], check=True)
+    repo = tmp_path / "demo-cli"
+    repo.mkdir()
+    (repo / ".git").symlink_to(other / ".git")              # would redirect the hook write
+    with pytest.raises(ValueError, match=".git is a symbolic link"):
+        scaffold.write(scaffold.Answers(**ANSWERS), repo, canon, skills)
+    assert not (other / ".git" / "hooks" / "pre-push").exists()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / ".ds").symlink_to(outside)                      # would redirect captures
+    text, err = call(agent.tools(canon, skills, work), "capture", {"title": "t", "body": "b"})
+    assert err and "symbolic link" in text and not list(outside.rglob("*.md"))
+
+
+def test_hook_fallback_path_is_never_executed_as_shell(tmp_path, monkeypatch):
+    marker = tmp_path / "pwned"
+    evil_dir = tmp_path / "$(touch pwned)"         # runs in tmp_path if the hook ever evaluates it
+    evil_dir.mkdir()
+    exe = evil_dir / "ds-next"
+    exe.write_text("#!/bin/sh\necho ran-fallback\n")
+    exe.chmod(0o755)
+    monkeypatch.setattr(sys, "argv", [str(exe)])
+    monkeypatch.setattr(scaffold.shutil, "which", lambda _: None)
+    hook = tmp_path / "pre-push"
+    hook.write_text(scaffold._hook_text())
+    r = subprocess.run(["sh", str(hook)], cwd=tmp_path, env={"PATH": "/usr/bin:/bin"}, capture_output=True,
+                       text=True, check=False)
+    assert not marker.exists() and "ran-fallback" in r.stdout
+
+
+def test_placeholders_in_user_text_stay_literal(canon, skills):
+    files = scaffold.render(scaffold.Answers(**{**ANSWERS, "purpose": "{{test_cmd}} and {{name}}"},
+                                             test_cmd='"; injected = True; "'), canon, skills)
+    init = files["src/demo_cli/__init__.py"]
+    assert init.startswith('"""{{test_cmd}} and {{name}}"""')    # the fixture template uses raw {{purpose}}
+    assert "injected" not in init
+    tomllib.loads(files["pyproject.toml"])
+
+
+@pytest.mark.parametrize("entry, expected", [
+    ('status = "declined"\nversion = 1\nby = "ck"\nreason = "r"\nrevisit = 2027-01-01T00:00:00Z\n',
+     "revisit must be a date"),
+    ('status = "declined"\nversion = 1\nby = "ck"\nreason = "   "\nrevisit = 2027-01-01\n', "needs reason"),
+    ('status = "adopted"\nversion = 1\nby = 42\non = 2026-10-16\n', "by must name who decided"),
+    ('status = "adopted"\nversion = 999\nby = "ck"\non = 2026-10-16\n', "the canon only has v1"),
+])
+def test_manifest_decisions_are_validated(tmp_path, canon, entry, expected):
+    (tmp_path / ".ds").mkdir()
+    (tmp_path / ".ds" / "manifest.toml").write_text(
+        f'[repo]\nname = "x"\ntags = ["python"]\n[standards.testing]\n{entry}')
+    r = reconcile.check(tmp_path, canon)
+    assert not r.ok and any(expected in e for e in r.errors), r.errors
+
+
+def test_hooks_path_outside_the_repo_is_reported(tmp_path, canon, skills):
+    repo = tmp_path / "demo-cli"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    elsewhere = tmp_path / "global-hooks"
+    elsewhere.mkdir()
+    subprocess.run(["git", "-C", str(repo), "config", "core.hooksPath", str(elsewhere)], check=True)
+    with pytest.raises(scaffold.ScaffoldError, match="hook is not installed.*core.hooksPath"):
+        scaffold.write(scaffold.Answers(**ANSWERS), repo, canon, skills)
+    assert not (elsewhere / "pre-push").exists()
+    assert subprocess.run(["git", "-C", str(repo), "log", "--oneline"], capture_output=True, text=True,
+                          check=True).stdout.strip()                 # the repo itself was still committed
+
+
+def test_repeated_captures_get_distinct_canon_ids(tmp_path, canon, skills):
+    tools = agent.tools(canon, skills, tmp_path)
+    call(tools, "capture", {"title": "Same", "body": "one"})
+    call(tools, "capture", {"title": "Same", "body": "two"})
+    folder = tmp_path / ".ds" / "captures"
+    ids = {f.stem: f.read_text().split("\n")[1] for f in folder.glob("*.md")}
+    assert ids == {"same": "id: same", "same-2": "id: same-2"}
+
+
+def test_docs_keep_an_older_pin_visible(tmp_path):
+    from ds_next.docs import _link_pointers
+    newer = make_canon(tmp_path / "c", bump={"testing": 2})
+    out = _link_pointers("We follow [[testing@1]] and [[testing]].", newer, "")
+    assert "(pinned v1; the canon is now v2)" in out and out.count("standards/testing.md") == 2

@@ -107,8 +107,16 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
         if status in ("adopted", "declined") and _version(e) is None:
             rep.errors.append(f"{sid}: version must be a whole number from 1 up, not {e.get('version')!r}")
             continue
+        if status in ("adopted", "declined") and not (isinstance(e.get("by"), str) and e["by"].strip()):
+            rep.errors.append(f"{sid}: by must name who decided, not {e.get('by')!r}")
+            continue
+        if status in ("adopted", "declined") and _version(e) > canon.standards[sid].version:
+            rep.errors.append(f"{sid}: {status} at v{_version(e)}, but the canon only has "
+                              f"v{canon.standards[sid].version}")
+            continue
         if status == "declined":
-            missing = [k for k in ("by", "reason", "revisit") if not e.get(k)]
+            missing = [k for k in ("reason", "revisit")
+                       if not (isinstance(e.get(k), str) and e[k].strip()) and not isinstance(e.get(k), dt.date)]
             if missing:
                 rep.errors.append(f"{sid}: a decline needs {', '.join(missing)}")
                 continue
@@ -118,7 +126,7 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
                     revisit = dt.date.fromisoformat(revisit)
                 except ValueError:
                     revisit = None
-            if not isinstance(revisit, dt.date):
+            if not isinstance(revisit, dt.date) or isinstance(revisit, dt.datetime):
                 rep.errors.append(f"{sid}: revisit must be a date like 2027-01-31, not {e['revisit']!r}")
                 continue
             rep.declined[sid] = str(e["reason"])
