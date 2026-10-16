@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import html
 import http.server
 import json
 import signal
@@ -305,7 +306,9 @@ class Repl:
     def _toolbar(self):
         where = self._where
         model = self.state.get("model") or self.agent.model or "auto"
-        return HTML(f"  <b>{self.cwd.name}</b> · {where} · model {model} · effort {self.agent.effort or 'default'} · "
+        esc = html.escape
+        return HTML(f"  <b>{esc(self.cwd.name)}</b> · {esc(where)} · model {esc(str(model))} · "
+                    f"effort {esc(str(self.agent.effort or 'default'))} · "
                     f"{'connected' if self.agent.connected else 'idle'}")
 
     # -- permissions

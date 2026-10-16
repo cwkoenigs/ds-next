@@ -19,7 +19,10 @@ from functools import cached_property
 from pathlib import Path, PurePosixPath
 
 POINTER_RE = re.compile(r"\[\[([a-z0-9-]+)(?:@(\d+))?\]\]")
-CODE_RE = re.compile(r"```.*?```|`[^`\n]*`", re.DOTALL)
+# Code is not a claim: fenced blocks (``` or ~~~, three or more, closed by at least as many of
+# the same character) and inline code spans are masked before pointers are read.
+CODE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^[ \t]{0,3}\1[`~]*[ \t]*$|\Z)"
+                     r"|(`+)[^`\n].*?\2", re.DOTALL | re.MULTILINE)
 
 
 def _find(env: str, name: str) -> Path | None:

@@ -69,6 +69,8 @@ class Answers:
             raise ValueError(f"name {self.name!r}: {self.package!r} is a Python keyword, so it cannot be imported")
         if not self.purpose.strip():
             raise ValueError("purpose: one line on what the repo does")
+        if not self.owner.strip():
+            raise ValueError("owner: who answers for this repo")
         for label in ("name", "purpose", "scaffold", "owner", "test_cmd", "lint_cmd", "snowflake", "notes"):
             _one_line(label, getattr(self, label))
         self.tags = [t.strip().lower() for t in self.tags if t.strip()]
@@ -225,7 +227,7 @@ def install_hook(repo: Path) -> str | None:
     hooks = hooks.resolve()
     if git_dir.resolve() not in (hooks, *hooks.parents):
         return f"git runs hooks from {hooks} (core.hooksPath), outside this repo, so it was not installed there"
-    hooks.mkdir(exist_ok=True)
+    hooks.mkdir(parents=True, exist_ok=True)
     hook = hooks / "pre-push"
     if hook.is_symlink():          # never write through a link to somewhere else
         hook.unlink()

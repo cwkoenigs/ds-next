@@ -376,3 +376,47 @@ def test_docs_keep_an_older_pin_visible(tmp_path):
     newer = make_canon(tmp_path / "c", bump={"testing": 2})
     out = _link_pointers("We follow [[testing@1]] and [[testing]].", newer, "")
     assert "(pinned v1; the canon is now v2)" in out and out.count("standards/testing.md") == 2
+
+
+# -- third Codex review, 2026-10-16
+
+def test_nested_hooks_path_inside_git_is_created(tmp_path, canon, skills):
+    repo = tmp_path / "demo-cli"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "core.hooksPath", ".git/new/subdir"], check=True)
+    scaffold.write(scaffold.Answers(**ANSWERS), repo, canon, skills)
+    assert (repo / ".git" / "new" / "subdir" / "pre-push").stat().st_mode & 0o111
+
+
+def test_toolbar_survives_markup_in_names(tmp_path):
+    from prompt_toolkit.formatted_text import to_formatted_text
+
+    from ds_next import ui
+    repl = object.__new__(ui.Repl)
+    repl.cwd, repl._where, repl.state = tmp_path / "R&D <team>", "x & y", {}
+    repl.agent = type("A", (), {"model": None, "effort": "low", "connected": False})()
+    text = "".join(t for _, t, *_ in to_formatted_text(repl._toolbar()))
+    assert "R&D <team>" in text and "x & y" in text
+
+
+def test_owner_is_required():
+    with pytest.raises(ValueError, match="owner"):
+        scaffold.Answers(**{**ANSWERS, "owner": "  "})
+
+
+@pytest.mark.parametrize("doc", [
+    "~~~\n[[not-a-standard]]\n~~~\n",
+    "````md\n```\n[[not-a-standard]]\n```\n````\n",
+    "``[[not-a-standard]]`` inline\n",
+])
+def test_pointer_examples_in_code_are_not_claims(canon, doc):
+    assert canon.pointer_problems(doc + "Real: [[nope]]\n") == ["[[nope]] is not in the canon"]
+
+
+def test_a_decline_reason_must_be_text(tmp_path, canon):
+    (tmp_path / ".ds").mkdir()
+    (tmp_path / ".ds" / "manifest.toml").write_text(
+        '[repo]\nname = "x"\ntags = ["python"]\n[standards.testing]\nstatus = "declined"\nversion = 1\n'
+        'by = "ck"\nreason = 2026-10-16\nrevisit = 2027-01-01\n')
+    r = reconcile.check(tmp_path, canon)
+    assert not r.ok and any("needs reason" in e for e in r.errors), r.errors

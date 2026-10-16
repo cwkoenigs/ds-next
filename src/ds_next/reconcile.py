@@ -115,8 +115,8 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
                               f"v{canon.standards[sid].version}")
             continue
         if status == "declined":
-            missing = [k for k in ("reason", "revisit")
-                       if not (isinstance(e.get(k), str) and e[k].strip()) and not isinstance(e.get(k), dt.date)]
+            missing = [k for k, ok in (("reason", isinstance(e.get("reason"), str) and e["reason"].strip()),
+                                       ("revisit", e.get("revisit") not in (None, ""))) if not ok]
             if missing:
                 rep.errors.append(f"{sid}: a decline needs {', '.join(missing)}")
                 continue
