@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ from . import reconcile
 from .kb import POINTER_RE, Canon, Skills, docs_shell_path
 
 RESERVED = {"standards", "skills"}
-README_LINK_RE = re.compile(r"\]\(((?:\./|(?:\.\./)+)?)README\.md")
+LINK_RE = re.compile(r"\]\(([^)\s#]+\.md)(#[^)\s]*)?\)")
 
 
 def _page(path: Path, title: str, body: str, position: int | None = None) -> None:
@@ -45,6 +46,19 @@ def _link_pointers(text: str, canon: Canon, prefix: str) -> str:
     return POINTER_RE.sub(sub, text)
 
 
+def _home_links(body: str, rel: str) -> str:
+    """Point links that resolve to the repo's root README.md at index.md, where the home page is
+    staged. A link to any other README (docs/README.md) keeps its target."""
+    here = posixpath.dirname(rel)
+
+    def sub(m):
+        target = m.group(1)
+        if "://" in target or posixpath.normpath(posixpath.join(here, target)) != "README.md":
+            return m.group(0)
+        return f"]({target[: -len('README.md')]}index.md{m.group(2) or ''})"
+    return LINK_RE.sub(sub, body)
+
+
 def stage(stage_dir: Path, canon: Canon, skills: Skills, repo: Path | None = None) -> tuple[Path, str]:
     """Write the content tree. Returns (docs dir, site title)."""
     docs = Path(stage_dir) / "docs"
@@ -64,7 +78,7 @@ def stage(stage_dir: Path, canon: Canon, skills: Skills, repo: Path | None = Non
             body = text.split("\n", 1)[1] if heading else text
             target, label, position = order.get(rel, (rel, heading or f.stem.replace("-", " ").capitalize(), None))
             depth = target.count("/")
-            body = README_LINK_RE.sub(lambda m: f"]({m.group(1) or ''}index.md", body)
+            body = _home_links(body, rel)
             _page(docs / target, label, _link_pointers(body, canon, "../" * depth), position)
     else:
         title = "Knowledge base"

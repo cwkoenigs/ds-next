@@ -481,3 +481,21 @@ def test_docs_build_has_no_broken_links(tmp_path, canon, skills):
     assert r.returncode == 0, r.stderr[-2000:]
     assert "broken link" not in (r.stdout + r.stderr).lower(), (r.stdout + r.stderr)[-2000:]
     assert (tmp_path / "site" / "docs" / "runbook" / "index.html").is_file()
+
+
+# -- sixth Codex review, 2026-10-16
+
+def test_only_links_to_the_root_readme_are_redirected(tmp_path, canon, skills):
+    from ds_next import docs
+    scaffold.write(scaffold.Answers(**ANSWERS), tmp_path / "demo-cli", canon, skills, git=False)
+    repo = tmp_path / "demo-cli"
+    (repo / "docs").mkdir()
+    (repo / "docs" / "README.md").write_text("# Docs index\n\nUp to [home](../README.md).\n")
+    (repo / "docs" / "runbook.md").write_text("# Runbook\n\n[Docs index](README.md), [home](../README.md#run).\n")
+    content, _ = docs.stage(tmp_path / "stage", canon, skills, repo)
+    runbook = (content / "docs" / "runbook.md").read_text()
+    assert "[Docs index](README.md)" in runbook and "[home](../index.md#run)" in runbook
+    assert "[home](../index.md)" in (content / "docs" / "README.md").read_text()
+    for page in content.rglob("*.md"):
+        for target in re.findall(r"\]\(([^)#:]+\.md)(?:#[^)]*)?\)", page.read_text()):
+            assert (page.parent / target).resolve().is_file(), (page, target)
