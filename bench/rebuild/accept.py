@@ -67,7 +67,7 @@ class Term:
         while time.time() < end:
             if not self.read(0.5):
                 break
-            m = re.search(pattern, self.buf[start:], re.I | re.S)
+            m = re.search(pattern, self.buf[start:], re.IGNORECASE | re.DOTALL)
             if m:
                 self.read(0.8)
                 return self.buf[start:]
@@ -133,7 +133,7 @@ try:
     term.send("made-by-rebuild\tA repository created by the rebuilt terminal\r")
     for _ in range(6):                           # approve whatever it asks, up to six times
         out = term.wait(r"allow|approve|\by/n\b|\[y|created|›", 240) or ""
-        if re.search(r"allow|approve|\by/n\b|\[y", out, re.I):
+        if re.search(r"allow|approve|\by/n\b|\[y", out, re.IGNORECASE):
             term.send("y\r")
         made = work / "made-by-rebuild"
         if (made / "pyproject.toml").is_file():
