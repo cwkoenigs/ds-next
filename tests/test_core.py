@@ -15,8 +15,11 @@ def test_canon_applicable_by_tags(canon):
     assert "error-handling" in [s.id for s in canon.applicable(["package"])]
 
 
-def test_pointers_skip_code(canon):
-    assert canon.broken_pointers("see [[testing]] and [[nope]] but not `[[also-nope]]`") == ["nope"]
+def test_pointers_skip_code_and_check_pins(canon):
+    assert canon.pointer_problems("see [[testing]] and [[nope]] but not `[[also-nope]]`") == [
+        "[[nope]] is not in the canon"]
+    assert canon.pointer_problems("[[testing@1]] is fine; [[testing@999]] is not") == [
+        "[[testing@999]] pins a version the canon never had (current v1)"]
 
 
 def test_skills_front_matter(skills):
@@ -107,7 +110,7 @@ def test_broken_pointer_and_bad_decline_are_errors(tmp_path, canon, skills):
         '[standards.testing]\nstatus = "adopted"', '[standards.testing]\nstatus = "declined"'))
     r = reconcile.check(repo, canon)
     assert not r.ok
-    assert any("[[gone]]" in e for e in r.errors) and any("testing: a decline needs" in e for e in r.errors)
+    assert any("[[gone]] is not in the canon" in e for e in r.errors) and any("testing: a decline needs" in e for e in r.errors)
 
 
 def test_overdue_decline_is_reported(tmp_path, canon, skills):

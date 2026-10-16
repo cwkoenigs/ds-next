@@ -12,7 +12,6 @@ from pathlib import Path
 
 from .kb import Canon
 
-DOCS = ("README.md", "AGENTS.md", "DECISIONS.md")
 STATUSES = ("adopted", "declined", "pending")
 
 
@@ -42,7 +41,29 @@ def find_repo(start: Path) -> Path | None:
     return None
 
 
+SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "site", "build", "dist", "__pycache__"}
+
+
+def _docs(repo: Path) -> list[Path]:
+    """Every Markdown file a person would read: the root docs plus anything under docs/ or
+    elsewhere, skipping hidden, generated and vendored directories."""
+    out = []
+    for f in sorted(repo.rglob("*.md")):
+        rel = f.relative_to(repo).parts
+        if any(p in SKIP_DIRS or p.startswith(".") for p in rel[:-1]) or f.is_symlink():
+            continue
+        out.append(f)
+    return out
+
+
+def _version(e: dict) -> int | None:
+    v = e.get("version")
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 1 else None
+
+
 def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) -> Report:
+    """Never raises on a bad manifest: every problem becomes an error line, so the hook and
+    the terminal always get an answer."""
     canon = canon or Canon()
     today = today or dt.date.today()
     repo = Path(repo).resolve()
@@ -53,13 +74,28 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
     except FileNotFoundError:
         rep.errors.append("no .ds/manifest.toml (create the repo with ds-next new)")
         return rep
-    except tomllib.TOMLDecodeError as e:
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
         rep.errors.append(f"manifest is not valid TOML: {e}")
         return rep
 
-    rep.repo = manifest.get("repo", {}).get("name", repo.name)
-    rep.tags = list(manifest.get("repo", {}).get("tags", []))
-    entries: dict = manifest.get("standards", {})
+    head = manifest.get("repo")
+    if not isinstance(head, dict):
+        rep.errors.append("manifest has no [repo] table")
+        return rep
+    if isinstance(head.get("name"), str) and head["name"]:
+        rep.repo = head["name"]
+    else:
+        rep.errors.append("[repo] name must be a non-empty string")
+    tags = head.get("tags")
+    if not (isinstance(tags, list) and tags and all(isinstance(t, str) and t for t in tags)):
+        rep.errors.append("[repo] tags must be a non-empty list of strings")
+        return rep
+    rep.tags = list(tags)
+    entries = manifest.get("standards", {})
+    if not isinstance(entries, dict) or not all(isinstance(e, dict) for e in entries.values()):
+        rep.errors.append("[standards] must hold one table per standard, like [standards.testing]")
+        return rep
+
     for sid, e in entries.items():
         status = e.get("status")
         if sid not in canon.standards:
@@ -68,13 +104,25 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
         if status not in STATUSES:
             rep.errors.append(f"{sid}: status {status!r} is not one of {', '.join(STATUSES)}")
             continue
+        if status in ("adopted", "declined") and _version(e) is None:
+            rep.errors.append(f"{sid}: version must be a whole number from 1 up, not {e.get('version')!r}")
+            continue
         if status == "declined":
             missing = [k for k in ("by", "reason", "revisit") if not e.get(k)]
             if missing:
                 rep.errors.append(f"{sid}: a decline needs {', '.join(missing)}")
                 continue
-            rep.declined[sid] = e["reason"]
-            if dt.date.fromisoformat(str(e["revisit"])) < today:
+            revisit = e["revisit"]
+            if isinstance(revisit, str):
+                try:
+                    revisit = dt.date.fromisoformat(revisit)
+                except ValueError:
+                    revisit = None
+            if not isinstance(revisit, dt.date):
+                rep.errors.append(f"{sid}: revisit must be a date like 2027-01-31, not {e['revisit']!r}")
+                continue
+            rep.declined[sid] = str(e["reason"])
+            if revisit < today:
                 rep.overdue.append(sid)
 
     for std in canon.applicable(rep.tags):
@@ -82,13 +130,16 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
         status = e.get("status")
         if status == "declined" and std.id in rep.declined:
             continue
-        if status == "adopted" and int(e.get("version", 0)) >= std.version:
+        if status == "adopted" and (_version(e) or 0) >= std.version:
             rep.adopted.append(std.id)
-        else:
+        elif not any(err.startswith(f"{std.id}:") for err in rep.errors):
             rep.pending.append(f"{std.id} v{std.version}")
 
-    for doc in DOCS:
-        f = repo / doc
-        if f.is_file():
-            rep.errors += [f"{doc}: [[{sid}]] does not resolve" for sid in canon.broken_pointers(f.read_text())]
+    for f in _docs(repo):
+        try:
+            text = f.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        rel = f.relative_to(repo).as_posix()
+        rep.errors += [f"{rel}: {problem}" for problem in canon.pointer_problems(text)]
     return rep

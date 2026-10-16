@@ -15,6 +15,7 @@ import signal
 import tempfile
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -130,7 +131,7 @@ def render(console: Console, msg: Any, state: dict) -> None:
                 text = _result_text(b)
                 lines = text.splitlines() or ["(no output)"]
                 more = f" … +{len(lines) - 1} lines" if len(lines) > 1 else ""
-                style = "red" if b.is_error else DIM
+                style = "red" if b.is_error or text.startswith("ERROR:") else DIM
                 console.print(Text(f"  ⎿  {lines[0][:100]}{more}", style=style))
     elif isinstance(msg, SystemMessage) and msg.subtype == "init":
         state["model"] = msg.data.get("model")
@@ -164,6 +165,51 @@ def changed_keys(draft: dict, args: dict) -> list[str]:
 def same_draft(draft: dict, args: dict) -> bool:
     """Whether the model is creating exactly what the form submitted (a version number aside)."""
     return not changed_keys(draft, args)
+
+
+class Approver:
+    """Answers Cortex's can_use_tool requests.
+
+    One question at a time: Cortex can ask for parallel tool calls at once, and two prompts on
+    one terminal would send an answer to the wrong one. The whole input is shown. Only an
+    explicit y, a or n counts; Enter alone asks again. Submitting the /new form approves exactly
+    that draft, and nothing else."""
+
+    def __init__(self, ask: Callable[[str, str], Awaitable[str]]):
+        self.ask = ask
+        self.always: set[str] = set()
+        self.draft: dict | None = None
+        self._lock = asyncio.Lock()
+
+    def reset(self) -> None:
+        self.always.clear()
+        self.draft = None
+
+    async def __call__(self, tool_name: str, inp: dict[str, Any], ctx: Any):
+        async with self._lock:
+            title, detail = describe_permission(tool_name, inp)
+            if title in self.always:
+                return PermissionResultAllow()
+            if title == "scaffold_project" and self.draft:
+                try:
+                    args = json.loads(detail)
+                except ValueError:
+                    args = {}
+                if same_draft(self.draft, args):
+                    self.draft = None
+                    return PermissionResultAllow()
+                detail = "Changed from your form:\n" + "\n".join(
+                    f"  {k}: {self.draft.get(k, '')!r} → {args.get(k, '')!r}"
+                    for k in changed_keys(self.draft, args)) + "\n\n" + detail
+            while True:
+                answer = (await self.ask(title, detail)).strip().lower()
+                if answer in ("a", "always"):
+                    self.always.add(title)
+                    return PermissionResultAllow()
+                if answer in ("y", "yes"):
+                    return PermissionResultAllow()
+                if answer in ("n", "no"):
+                    return PermissionResultDeny(message="The user declined this call. Ask what to do instead.")
 
 
 def describe_permission(tool_name: str, inp: dict[str, Any]) -> tuple[str, str]:
@@ -214,10 +260,10 @@ class Repl:
         self.console = Console(highlight=False)
         self.canon = Canon()
         self.skills = Skills()
-        self.agent = Agent(self.cwd, ask_permission=self._ask_permission, model=model,
+        self.approver = Approver(self._prompt_approval)
+        self._sigint = None
+        self.agent = Agent(self.cwd, ask_permission=self.approver, model=model,
                            connection=connection, effort=effort, canon=self.canon, skills=self.skills)
-        self._draft: dict | None = None     # the /new form's answers, awaiting the model's review
-        self.always: set[str] = set()
         self.state: dict = {}
         self._status = None
         self._server: http.server.ThreadingHTTPServer | None = None
@@ -250,8 +296,11 @@ class Repl:
         self.console.print()
 
     def _refresh_where(self) -> None:
-        repo = reconcile.find_repo(self.cwd)
-        self._where = reconcile.check(repo, self.canon).summary() if repo else "not a ds repo"
+        try:
+            repo = reconcile.find_repo(self.cwd)
+            self._where = reconcile.check(repo, self.canon).summary() if repo else "not a ds repo"
+        except Exception as e:  # noqa: BLE001 - the toolbar must never take the terminal down
+            self._where = f"status unavailable ({type(e).__name__})"
 
     def _toolbar(self):
         where = self._where
@@ -260,41 +309,23 @@ class Repl:
                     f"{'connected' if self.agent.connected else 'idle'}")
 
     # -- permissions
-    async def _ask_permission(self, tool_name: str, inp: dict[str, Any], ctx: Any):
-        title, detail = describe_permission(tool_name, inp)
-        if title in self.always:
-            return PermissionResultAllow()
-        if title == "scaffold_project" and self._draft:
-            try:
-                args = json.loads(detail)
-            except ValueError:
-                args = {}
-            # submitting the form was the approval, but only for exactly what was submitted
-            if same_draft(self._draft, args):
-                self._draft = None
-                return PermissionResultAllow()
-            detail = "Changed from your form:\n" + "\n".join(
-                f"  {k}: {self._draft.get(k, '')!r} → {args.get(k, '')!r}" for k in changed_keys(self._draft, args)) \
-                + "\n\n" + detail
+    async def _prompt_approval(self, title: str, detail: str) -> str:
+        """Show the whole request and read one answer. Stops the spinner while it asks and puts
+        the turn's Ctrl-C handler back afterwards, since the prompt replaces it."""
         if self._status:
             self._status.stop()
         try:
-            self.console.print(Panel(Text(detail[:1500] or "(no input)"), title=f"[bold]{title}[/bold]",
+            self.console.print(Panel(Text(detail or "(no input)"), title=f"[bold]{title}[/bold]",
                                      title_align="left", border_style="yellow", expand=False))
-            answer = await PromptSession().prompt_async(
+            return await PromptSession().prompt_async(
                 HTML("  Allow? <b>y</b>es · <b>a</b>lways this session · <b>n</b>o › "))
         except (KeyboardInterrupt, EOFError):
-            answer = "n"
+            return "n"
         finally:
+            if self._sigint is not None:
+                asyncio.get_running_loop().add_signal_handler(signal.SIGINT, self._sigint)
             if self._status:
                 self._status.start()
-        answer = answer.strip().lower()
-        if answer.startswith("a"):
-            self.always.add(title)
-            return PermissionResultAllow()
-        if answer.startswith("y") or answer == "":
-            return PermissionResultAllow()
-        return PermissionResultDeny(message="The user declined this call. Ask what to do instead.")
 
     # -- local commands
     def cmd_help(self, _: str) -> None:
@@ -464,7 +495,7 @@ class Repl:
         shown.append(footer(v), style=ACCENT)
         self.console.print(_bullet(shown))
         self.console.print()
-        self._draft = draft
+        self.approver.draft = draft
         await self.turn("New project draft from the /new form. Review it against the canon, then fetch the "
                         f"accepted scaffold and create it, as your instructions say.\n\n{json.dumps(draft, indent=1)}")
 
@@ -483,7 +514,7 @@ class Repl:
 
     async def cmd_clear(self, _: str) -> None:
         await self.agent.reset()
-        self.always.clear()
+        self.approver.reset()
         self.state.clear()
         self.console.clear()
         self.banner()
@@ -498,6 +529,7 @@ class Repl:
             interrupted = True
             asyncio.ensure_future(self.agent.interrupt())
 
+        self._sigint = on_sigint
         loop.add_signal_handler(signal.SIGINT, on_sigint)
         self.state["step"] = "Connecting to Cortex Code" if not self.agent.connected else "Thinking"
         self.state["asked"] = False
@@ -529,6 +561,7 @@ class Repl:
             ticker.cancel()
             self._status.stop()
             self._status = None
+            self._sigint = None
             loop.remove_signal_handler(signal.SIGINT)
         if interrupted:
             self.console.print(Text("  ⎿  Interrupted by user", style="red"))

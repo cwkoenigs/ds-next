@@ -99,7 +99,9 @@ question with "keep my answers"; with no question pending it prints a hint. Ctrl
 The agent's tools, served in-process: `canon_list`, `canon_read`, `skills_list`, `skill_read`,
 `project_status`, `scaffold_list` and `scaffold_get` are approved automatically because they
 only read. `scaffold_project` and `capture` write, as do Cortex's own Bash and file edits, so
-they ask unless the form already approved them.
+they ask unless the form already approved them. An approval shows the whole request, asks one
+question at a time even when Cortex makes parallel calls, and takes only an explicit `y`, `a` or
+`n`: Enter alone asks again.
 
 ## Without the model
 
@@ -134,6 +136,9 @@ and a pre-push hook. A CLI is also tagged `package`, so it inherits package stan
   so a fresh install of it picks up `mcp` 2 and `create_sdk_mcp_server` raises `AttributeError`.
 - `allowed_tools` is exclusive in Cortex: every tool not listed is blocked before `can_use_tool` is
   asked, Bash included. ds-next sets no allowlist and approves read-only tools in its callback.
+- Cortex drops the error flag of in-process tool results, whether it is sent as `is_error` or
+  `isError` (checked live). ds-next therefore starts every error result with `ERROR:`, which the
+  model reads and the terminal colours red.
 - `can_use_tool` receives a kind (`"MCP"`, `"Bash"`) and `{"action", "resource"}`. For MCP tools,
   the first line of `resource` is the tool's full name and the rest is its input.
 

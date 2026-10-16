@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -32,9 +33,12 @@ def make_canon(root: Path, bump: dict[str, int] | None = None) -> Canon:
             (d / "files" / rel).parent.mkdir(parents=True, exist_ok=True)
             (d / "files" / rel).write_text(text)
         (d / "SCAFFOLD.md").write_text(f"---\nid: {sid}\n---\n\n# {sid}\n\nAbout {sid}.\n")
+        digest = hashlib.sha256((d / "SCAFFOLD.md").read_bytes())     # as build_index.py does
+        for rel in sorted(files):
+            digest.update(f"files/{rel}".encode() + (d / "files" / rel).read_bytes())
         scaffolds.append({"id": sid, "version": 3, "title": f"T {sid}", "path": path, "tags": tags,
                           "owner": "o", "status": status, "defaults": {"test_cmd": "uv run pytest -q"},
-                          "hash": "x", "dir": f"scaffolds/{sid}", "files": sorted(files)})
+                          "hash": digest.hexdigest()[:12], "dir": f"scaffolds/{sid}", "files": sorted(files)})
     (root / "index.json").write_text(json.dumps({"generated": "today", "standards": rows, "scaffolds": scaffolds}))
     return Canon(root)
 

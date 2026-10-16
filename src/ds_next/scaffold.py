@@ -8,20 +8,36 @@ provenance comments say which.
 from __future__ import annotations
 
 import datetime as dt
-import json
+import keyword
 import re
+import shutil
 import subprocess
+import sys
 import tomllib
+import unicodedata
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from . import __version__
-from .kb import Canon, Skills
+from .kb import Canon, Skills, json_str
 
 # skills-os procedures worth naming in a new repo's AGENTS.md, in the order a project meets them
 RECOMMENDED_SKILLS = ("so-build-feature-interview", "so-bug-review-interview",
                       "so-best-practice-audit", "so-capture", "so-changes")
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,40}$")
+TAG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,30}$")
+
+
+class ScaffoldError(RuntimeError):
+    """The files were written but finishing the repo (git) failed; the message says where."""
+
+
+def _one_line(label: str, value: str) -> None:
+    """Every answer is a single line of printable text: it lands in Markdown, TOML, YAML and
+    Python, and a newline or control character in any of them changes what the file says."""
+    bad = next((c for c in value if unicodedata.category(c) in ("Cc", "Zl", "Zp")), None)
+    if bad is not None:
+        raise ValueError(f"{label}: one line of text, without control characters ({bad!r})")
 
 
 def _git_user() -> str:
@@ -46,11 +62,22 @@ class Answers:
     declines: dict[str, str] = field(default_factory=dict)   # standard id -> reason
 
     def __post_init__(self) -> None:
-        if not NAME_RE.match(self.name):
-            raise ValueError(f"name {self.name!r}: lowercase letters, digits and dashes, 2-41 chars")
+        if not NAME_RE.match(self.name) or self.name.endswith("-") or "--" in self.name:
+            raise ValueError(f"name {self.name!r}: lowercase letters, digits and single dashes, 2-41 chars")
+        if keyword.iskeyword(self.package) or keyword.issoftkeyword(self.package):
+            raise ValueError(f"name {self.name!r}: {self.package!r} is a Python keyword, so it cannot be imported")
         if not self.purpose.strip():
             raise ValueError("purpose: one line on what the repo does")
+        for label in ("name", "purpose", "scaffold", "owner", "test_cmd", "lint_cmd", "snowflake", "notes"):
+            _one_line(label, getattr(self, label))
         self.tags = [t.strip().lower() for t in self.tags if t.strip()]
+        for t in self.tags:
+            if not TAG_RE.match(t):
+                raise ValueError(f"tag {t!r}: lowercase letters, digits and dashes")
+        for sid, why in self.declines.items():
+            if not str(why).strip():
+                raise ValueError(f"decline of {sid}: a decline needs a reason")
+            _one_line(f"decline of {sid}", str(why))
 
     @property
     def package(self) -> str:
@@ -74,8 +101,7 @@ class Answers:
         return cls(**tomllib.loads(Path(path).read_text()))
 
 
-def _toml_str(s: str) -> str:
-    return json.dumps(s)         # a JSON string is a valid TOML basic string
+_toml_str = json_str             # a JSON string is a valid TOML basic string
 
 
 def render(a: Answers, canon: Canon, skills: Skills, today: dt.date | None = None) -> dict[str, str]:
@@ -159,43 +185,86 @@ None yet.
 
     files.update(canon.render_scaffold(sc.id, {
         "name": a.name, "package": a.package, "purpose": a.purpose.strip(),
-        "purpose_json": _toml_str(a.purpose.strip()), "test_cmd": a.test_cmd, "lint_cmd": a.lint_cmd}))
+        "purpose_json": json_str(a.purpose.strip()), "test_cmd": a.test_cmd, "lint_cmd": a.lint_cmd,
+        "test_cmd_json": json_str(a.test_cmd), "lint_cmd_json": json_str(a.lint_cmd)}))
     return files
 
 
-PRE_PUSH = """#!/bin/sh
+def _hook_text() -> str:
+    """The pre-push hook. It finds ds-next on PATH or where it ran from when the hook was made,
+    and says so out loud when it cannot, instead of skipping the check in silence."""
+    here = shutil.which("ds-next") or str(Path(sys.argv[0]).resolve())
+    fallback = here if Path(here).name == "ds-next" else ""
+    return f"""#!/bin/sh
 # ds:derived ds-next hooks. Pending standards never block; broken pointers and a bad manifest do.
-command -v ds-next >/dev/null 2>&1 || exit 0
-exec ds-next reconcile --quiet
+DS="$(command -v ds-next 2>/dev/null)"
+[ -z "$DS" ] && [ -x {json_str(fallback)} ] && DS={json_str(fallback)}
+if [ -z "$DS" ]; then
+  echo "ds: ds-next not found, so reconcile did not run. Install it (uv tool install ds-next) or put it on PATH." >&2
+  exit 0
+fi
+exec "$DS" reconcile --quiet
 """
 
 
 def install_hook(repo: Path) -> Path | None:
     hooks = repo / ".git" / "hooks"
-    if not hooks.is_dir():
+    if hooks.is_symlink() or not hooks.is_dir():
         return None
     hook = hooks / "pre-push"
-    hook.write_text(PRE_PUSH)
+    if hook.is_symlink():          # never write through a link to somewhere else
+        hook.unlink()
+    hook.write_text(_hook_text())
     hook.chmod(0o755)
     return hook
 
 
+def _inside(dest: Path, rel: str) -> Path:
+    """The path for rel under dest, refusing anything that would land elsewhere or pass
+    through a symbolic link."""
+    target = dest / rel
+    if Path(rel).is_absolute() or ".." in Path(rel).parts:
+        raise ValueError(f"refusing to write {rel!r}: not a plain relative path")
+    p = dest
+    for part in Path(rel).parts:
+        p = p / part
+        if p.is_symlink():
+            raise ValueError(f"refusing to write {rel!r}: {p} is a symbolic link")
+    if dest not in target.resolve().parents:
+        raise ValueError(f"refusing to write {rel!r}: it resolves outside {dest}")
+    return target
+
+
+def _git(dest: Path, *args: str) -> None:
+    r = subprocess.run(["git", "-C", str(dest), *args], capture_output=True, text=True, check=False)
+    if r.returncode != 0:
+        raise ScaffoldError(f"files are in {dest}, but `git {' '.join(args[:2])}` failed: "
+                            f"{(r.stderr or r.stdout).strip()[:300]}")
+
+
 def write(a: Answers, dest: Path, canon: Canon | None = None, skills: Skills | None = None,
           git: bool = True) -> list[str]:
-    """Create the repo at dest. Refuses a directory that already has files in it."""
-    dest = Path(dest).expanduser().resolve()
+    """Create the repo at dest. Refuses a directory that already has files in it, a symbolic
+    link as the destination, and any file that would land outside it."""
+    dest = Path(dest).expanduser()
+    if dest.is_symlink():
+        raise ValueError(f"refusing to write into {dest}: it is a symbolic link")
+    dest = dest.resolve()
     if dest.exists() and any(p.name != ".git" for p in dest.iterdir()):
         raise FileExistsError(f"{dest} is not empty")
     files = render(a, canon or Canon(), skills or Skills())
+    targets = {rel: _inside(dest, rel) for rel in files}      # check every path before writing any
     for rel, text in files.items():
-        p = dest / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text)
+        targets[rel].parent.mkdir(parents=True, exist_ok=True)
+        targets[rel].write_text(text)
     if git:
-        run = lambda *c: subprocess.run(["git", *c], cwd=dest, capture_output=True, text=True, check=False)
         if not (dest / ".git").exists():
-            run("init", "-q", "-b", "main")
+            _git(dest, "init", "-q", "-b", "main")
+        top = subprocess.run(["git", "-C", str(dest), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, check=False).stdout.strip()
+        if Path(top).resolve() != dest:     # never stage into a parent repository
+            raise ScaffoldError(f"files are in {dest}, but git resolves it to {top or 'no repository'}")
         install_hook(dest)
-        run("add", "-A")
-        run("commit", "-q", "-m", f"Scaffold {a.name} from the canon with ds-next")
+        _git(dest, "add", "-A")
+        _git(dest, "commit", "-q", "-m", f"Scaffold {a.name} from the canon with ds-next")
     return sorted(files)

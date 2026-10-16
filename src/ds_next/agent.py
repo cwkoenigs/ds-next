@@ -33,14 +33,24 @@ WRITES = ("scaffold_project", "capture")
 READ_ONLY_IDS = {f"mcp__{SERVER}__{t}" for t in READ_ONLY}
 
 
+ERROR_PREFIX = "ERROR: "
+
+
 def _text(s: str, error: bool = False) -> dict[str, Any]:
-    out: dict[str, Any] = {"content": [{"type": "text", "text": s}]}
+    """A tool result. Cortex Code 1.2.14 drops the is_error flag of in-process tools (checked
+    live, with both is_error and isError), so errors also say so in their first word, which
+    the model reads and the terminal colours."""
+    out: dict[str, Any] = {"content": [{"type": "text", "text": (ERROR_PREFIX + s) if error else s}]}
     if error:
         out["is_error"] = True
     return out
 
 
 def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
+    # (scaffold id, version, template hash) the model has fetched this session; scaffold_project
+    # accepts only one of these, so the code always comes from a scaffold the model looked at
+    fetched: set[tuple[str, int, str]] = set()
+
     @tool("canon_list", "List the canon standards that apply to a set of repo tags "
           "(comma-separated, e.g. 'python,cli'). Empty tags lists every standard.", {"tags": str})
     async def canon_list(args):
@@ -89,6 +99,7 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
         sc = canon.scaffolds.get(args["id"])
         if sc is None:
             return _text(f"no scaffold {args['id']!r}; scaffold_list shows them", error=True)
+        fetched.add((sc.id, sc.version, sc.hash))
         return _text(json.dumps({"id": sc.id, "version": sc.version, "status": sc.status,
                                  "accepted": sc.accepted, "title": sc.title, "tags": sc.tags,
                                  "defaults": sc.defaults, "files": sc.files,
@@ -119,14 +130,17 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
         parent = Path(args.pop("directory", "") or cwd).expanduser()
         version = args.pop("scaffold_version", None)
         sc = canon.scaffolds.get(args.get("scaffold", ""))
-        if sc is None or version != sc.version:
-            current = f"v{sc.version}" if sc else "unknown"
-            return _text(f"not created: scaffold {args.get('scaffold')!r} is {current} in the canon, "
-                         f"you passed v{version}. Fetch it with scaffold_get first.", error=True)
+        if sc is None or (sc.id, version, sc.hash) not in fetched:
+            current = f"v{sc.version}" if sc else "not in the canon"
+            return _text(f"not created: scaffold {args.get('scaffold')!r} ({current}) has not been fetched "
+                         f"at v{version} in this session. Call scaffold_get first and pass the version it returns.",
+                         error=True)
         try:
             a = scaffold.Answers(**{k: v for k, v in args.items() if v not in (None, "")})
             files = scaffold.write(a, parent / a.name, canon, skills)
             r = reconcile.check(parent / a.name, canon)
+        except scaffold.ScaffoldError as e:
+            return _text(f"partly created: {e}", error=True)
         except (ValueError, TypeError, FileExistsError) as e:
             return _text(f"not created: {e}", error=True)
         return _text(f"created {parent / a.name} from {sc.id} v{sc.version}\n{r.summary()}\nfiles:\n"
@@ -139,14 +153,27 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
                              "applies_to": {"type": "array", "items": {"type": "string"}}},
               "required": ["title", "body"]})
     async def capture(args):
-        slug = re.sub(r"[^a-z0-9]+", "-", args["title"].lower()).strip("-")[:50]
+        title = " ".join(str(args["title"]).split())          # front matter is one line per key
+        slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:50].strip("-") or "capture"
         base = reconcile.find_repo(cwd) or cwd
-        path = base / ".ds" / "captures" / f"{slug}.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
+        folder = base / ".ds" / "captures"
+        if folder.is_symlink():
+            return _text(f"not written: {folder} is a symbolic link", error=True)
+        folder.mkdir(parents=True, exist_ok=True)
         applies = json.dumps(args.get("applies_to") or ["*"])
-        path.write_text(f"---\nid: {slug}\nversion: 1\ntitle: {args['title']}\napplies_to: {applies}\n"
-                        f"owner: {scaffold._git_user()}\nstatus: proposed\ndate: {dt.date.today()}\n---\n\n"
-                        f"# {args['title']}\n\n{args['body'].strip()}\n")
+        text = (f"---\nid: {slug}\nversion: 1\ntitle: {title}\napplies_to: {applies}\n"
+                f"owner: {scaffold._git_user()}\nstatus: proposed\ndate: {dt.date.today()}\n---\n\n"
+                f"# {title}\n\n{str(args['body']).strip()}\n")
+        for n in range(1, 100):                # never overwrite an earlier draft, or follow a link
+            path = folder / (f"{slug}.md" if n == 1 else f"{slug}-{n}.md")
+            try:
+                with open(path, "x") as f:  # noqa: ASYNC230 - one small file; "x" refuses to overwrite
+                    f.write(text)
+                break
+            except FileExistsError:
+                continue
+        else:
+            return _text(f"not written: 99 drafts already named {slug}", error=True)
         return _text(f"draft at {path}. To publish: open a canon merge request with this file "
                      f"(the so-capture skill does it), then run scripts/build_index.py.")
 
@@ -278,3 +305,4 @@ class Agent:
     async def reset(self) -> None:
         await self.close()
         self.session_id = None
+        self._resume = None            # a fresh session must not resume the old one
