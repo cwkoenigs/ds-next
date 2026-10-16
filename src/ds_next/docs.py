@@ -8,11 +8,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
+from . import reconcile
 from .kb import POINTER_RE, Canon, Skills, docs_shell_path
+
+RESERVED = {"standards", "skills"}
+README_LINK_RE = re.compile(r"\]\(((?:\./|(?:\.\./)+)?)README\.md")
 
 
 def _page(path: Path, title: str, body: str, position: int | None = None) -> None:
@@ -46,13 +51,21 @@ def stage(stage_dir: Path, canon: Canon, skills: Skills, repo: Path | None = Non
     shutil.rmtree(docs, ignore_errors=True)
     if repo:
         title = repo.name
-        for i, (fname, label) in enumerate([("README.md", "Overview"), ("AGENTS.md", "Agents"),
-                                            ("DECISIONS.md", "Decisions")], start=1):
-            f = repo / fname
-            if f.is_file():
-                body = f.read_text().split("\n", 1)[1] if f.read_text().startswith("# ") else f.read_text()
-                target = docs / ("index.md" if i == 1 else f"{fname.lower()}")
-                _page(target, title if i == 1 else label, _link_pointers(body, canon, ""), i)
+        # Every Markdown file the repo has, at its own relative path, so the links between them
+        # keep working on the site. README.md becomes the home page, and links to it follow.
+        order = {"README.md": ("index.md", title, 1), "AGENTS.md": ("AGENTS.md", "Agents", 2),
+                 "DECISIONS.md": ("DECISIONS.md", "Decisions", 3)}
+        for f in reconcile._docs(repo):
+            rel = f.relative_to(repo).as_posix()
+            if rel.split("/")[0] in RESERVED:
+                continue                       # the site's own sections; the repo's copy would collide
+            text = f.read_text(errors="replace")
+            heading = text.split("\n", 1)[0][2:].strip() if text.startswith("# ") else ""
+            body = text.split("\n", 1)[1] if heading else text
+            target, label, position = order.get(rel, (rel, heading or f.stem.replace("-", " ").capitalize(), None))
+            depth = target.count("/")
+            body = README_LINK_RE.sub(lambda m: f"]({m.group(1) or ''}index.md", body)
+            _page(docs / target, label, _link_pointers(body, canon, "../" * depth), position)
     else:
         title = "Knowledge base"
         rows = "\n".join(f"| [{s.id}](standards/{s.id}.md) | {s.title} | v{s.version} | {s.status} |"

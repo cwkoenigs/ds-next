@@ -2,10 +2,12 @@
 import asyncio
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
 import tomllib
+from pathlib import Path
 
 import pytest
 import yaml
@@ -446,3 +448,36 @@ def test_a_newer_version_reopens_a_decline(tmp_path, canon, skills):
     r = reconcile.check(tmp_path / a.name, newer)
     assert r.ok and "testing" not in r.declined
     assert r.pending == ["testing v2 (declined at v1)"]
+
+
+# -- fifth Codex review, 2026-10-16
+
+def test_docs_stage_every_linked_page(tmp_path, canon, skills):
+    from ds_next import docs
+    scaffold.write(scaffold.Answers(**ANSWERS), tmp_path / "demo-cli", canon, skills, git=False)
+    repo = tmp_path / "demo-cli"
+    (repo / "README.md").write_text("# demo\n\nSee [the runbook](docs/runbook.md) and [agents](AGENTS.md).\n")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "runbook.md").write_text("# Runbook\n\nBack to [home](../README.md). Follows [[testing]].\n")
+    content, _ = docs.stage(tmp_path / "stage", canon, skills, repo)
+    assert (content / "docs" / "runbook.md").is_file() and (content / "AGENTS.md").is_file()
+    runbook = (content / "docs" / "runbook.md").read_text()
+    assert "](../index.md)" in runbook and "](../standards/testing.md)" in runbook
+    for page in content.rglob("*.md"):                      # every relative link lands on a staged page
+        for target in re.findall(r"\]\(([^)#:]+\.md)\)", page.read_text()):
+            assert (page.parent / target).resolve().is_file(), (page, target)
+
+
+@pytest.mark.skipif(not (Path.home() / "Developer" / "docs-ds" / "node_modules").is_dir(), reason="needs docs-ds")
+def test_docs_build_has_no_broken_links(tmp_path, canon, skills):
+    from ds_next import docs
+    scaffold.write(scaffold.Answers(**ANSWERS), tmp_path / "demo-cli", canon, skills, git=False)
+    repo = tmp_path / "demo-cli"
+    (repo / "README.md").write_text("# demo\n\nSee [the runbook](docs/runbook.md).\n")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "runbook.md").write_text("# Runbook\n\nBack to [home](../README.md).\n")
+    content, title = docs.stage(tmp_path / "stage", canon, skills, repo)
+    r = docs.build(content, title, tmp_path / "site")
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert "broken link" not in (r.stdout + r.stderr).lower(), (r.stdout + r.stderr)[-2000:]
+    assert (tmp_path / "site" / "docs" / "runbook" / "index.html").is_file()
