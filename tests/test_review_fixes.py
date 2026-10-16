@@ -499,3 +499,23 @@ def test_only_links_to_the_root_readme_are_redirected(tmp_path, canon, skills):
     for page in content.rglob("*.md"):
         for target in re.findall(r"\]\(([^)#:]+\.md)(?:#[^)]*)?\)", page.read_text()):
             assert (page.parent / target).resolve().is_file(), (page, target)
+
+
+# -- seventh Codex review, 2026-10-16
+
+def test_docs_never_build_over_a_repo_or_other_files(tmp_path, canon, skills, monkeypatch):
+    from ds_next import docs
+    scaffold.write(scaffold.Answers(**ANSWERS), tmp_path / "demo-cli", canon, skills)
+    repo = tmp_path / "demo-cli"
+    ran = []                                    # stand in for Docusaurus, which empties --out-dir
+    monkeypatch.setattr(docs.subprocess, "run", lambda *a, **k: ran.append(a) or subprocess.CompletedProcess(a, 0))
+    monkeypatch.chdir(repo)
+    content, title = docs.stage(tmp_path / "stage", canon, skills, repo)
+    for bad in (repo, tmp_path, repo / "src", Path.home()):      # the repo, a parent of it, a non-site dir
+        with pytest.raises(ValueError, match="refusing to build"):
+            docs.build(content, title, bad, protect=[repo])
+    assert ran == [] and (repo / ".git").is_dir() and (repo / "README.md").is_file()
+    fresh = tmp_path / "site"
+    docs.build(content, title, fresh, protect=[repo])             # a new directory is fine
+    assert ran and (fresh / docs.SITE_MARKER).is_file()
+    docs.build(content, title, fresh, protect=[repo])             # and so is rebuilding a ds-next site

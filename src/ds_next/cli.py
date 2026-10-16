@@ -108,7 +108,11 @@ def docs(output: Path = typer.Option(None, "--out", help="build directory (defau
     stage = Path(tempfile.mkdtemp(prefix="ds-next-docs-"))
     content, title = docs_mod.stage(stage, Canon(), Skills(), repo)
     target = output or stage / "site"
-    r = docs_mod.build(content, title, target)
+    try:
+        r = docs_mod.build(content, title, target, protect=[repo] if repo else [])
+    except (ValueError, FileNotFoundError) as e:
+        out.print(str(e), style="red")
+        raise typer.Exit(1) from None
     if r.returncode != 0:
         out.print((r.stdout + r.stderr)[-2000:], style="red")
         raise typer.Exit(1)

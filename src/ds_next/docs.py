@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 from . import reconcile
-from .kb import POINTER_RE, Canon, Skills, docs_shell_path
+from .kb import POINTER_RE, Canon, Skills, canon_path, docs_shell_path
 
 RESERVED = {"standards", "skills"}
 LINK_RE = re.compile(r"\]\(([^)\s#]+\.md)(#[^)\s]*)?\)")
@@ -101,13 +101,41 @@ def stage(stage_dir: Path, canon: Canon, skills: Skills, repo: Path | None = Non
     return docs, title
 
 
-def build(docs: Path, title: str, out: Path) -> subprocess.CompletedProcess:
+SITE_MARKER = ".ds-next-site"
+
+
+def check_out_dir(out: Path, protect: list[Path]) -> Path:
+    """Docusaurus empties its output directory before building, so refuse any directory whose
+    loss would hurt: one that holds (or is) a protected path, or one with files that are not a
+    previous ds-next build. Returns the resolved path."""
+    out = Path(out).expanduser().resolve()
+    for p in [Path.home(), Path(out.anchor), *protect]:
+        p = Path(p).resolve()
+        if out == p or out in p.parents:
+            raise ValueError(f"refusing to build into {out}: it would delete {p}")
+    if out.is_symlink() or (out.exists() and not out.is_dir()):
+        raise ValueError(f"refusing to build into {out}: not a plain directory")
+    if out.is_dir() and any(out.iterdir()) and not (out / SITE_MARKER).is_file():
+        raise ValueError(f"refusing to build into {out}: it has files that are not a ds-next site, "
+                         "and the build would delete them. Use an empty or new directory.")
+    return out
+
+
+def build(docs: Path, title: str, out: Path, protect: list[Path] | None = None) -> subprocess.CompletedProcess:
     shell = docs_shell_path()
+    guard = [Path.cwd(), docs, *(protect or [])] + ([shell] if shell else [])
+    if (canon := canon_path()) is not None:
+        guard.append(canon)
+    out = check_out_dir(out, guard)                       # before anything can delete it
     if shell is None or not (shell / "node_modules").is_dir():
         raise FileNotFoundError("docs-ds not found or not installed: clone it to ~/Developer/docs-ds "
                                 "and run `npm ci` there, or set DS_DOCS_SHELL")
     env = {**os.environ, "DOCS_CONTENT_PATH": str(docs.resolve()), "SITE_BASE_URL": "/",
            "SITE_TITLE": title, "SITE_NAV_LABEL": title, "SITE_TAGLINE": "rendered by ds-next",
            "DOCS_STRICT": "0"}
-    return subprocess.run(["npx", "docusaurus", "build", "--out-dir", str(Path(out).resolve())],
-                          cwd=shell, env=env, capture_output=True, text=True, check=False)
+    r = subprocess.run(["npx", "docusaurus", "build", "--out-dir", str(out)],
+                       cwd=shell, env=env, capture_output=True, text=True, check=False)
+    if r.returncode == 0:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / SITE_MARKER).write_text("built by ds-next docs; safe to rebuild into\n")
+    return r

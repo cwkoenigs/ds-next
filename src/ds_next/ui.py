@@ -394,8 +394,8 @@ class Repl:
         with self.console.status(f"[{ACCENT}]✻[/] Building with docs-ds…", spinner="dots"):
             content, title = docs.stage(stage, self.canon, self.skills, repo)
             try:
-                r = docs.build(content, title, stage / "site")
-            except FileNotFoundError as e:
+                r = docs.build(content, title, stage / "site", protect=[repo] if repo else [])
+            except (ValueError, FileNotFoundError) as e:
                 self.console.print(Text(str(e), style="red"))
                 return
         if r.returncode != 0:
