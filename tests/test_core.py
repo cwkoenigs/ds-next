@@ -46,7 +46,8 @@ def test_only_accepted_scaffolds(canon):
 def test_code_comes_from_the_canon_scaffold(canon, skills):
     files = scaffold.render(scaffold.Answers(**ANSWERS), canon, skills)
     assert files["src/claims_features/__init__.py"] == '"""Feature store for claims models"""\n'
-    assert files["pyproject.toml"] == 'name = "claims-features"\ndescription = "Feature store for claims models"\n'
+    assert files["pyproject.toml"].startswith('[project]\nname = "claims-features"\n'
+                                              'description = "Feature store for claims models"\n')
     assert ".gitignore" in files and "dot-gitignore" not in files
     m = tomllib.loads(files[".ds/manifest.toml"])
     assert (m["repo"]["scaffold"], m["repo"]["scaffold_version"]) == ("python-cli", 3)

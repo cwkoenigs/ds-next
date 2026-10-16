@@ -68,6 +68,7 @@ class Standard:
     owner: str
     status: str
     path: str
+    kind: str = "standard"        # or "gotcha": a lesson, adopted like any standard
 
     def applies(self, tags: list[str] | tuple[str, ...]) -> bool:
         return any(p == "*" or any(fnmatch.fnmatchcase(t, p) for t in tags) for p in self.applies_to)
@@ -86,6 +87,26 @@ class Scaffold:
     dir: str
     files: tuple[str, ...]
     hash: str = ""
+
+    @property
+    def accepted(self) -> bool:
+        return self.status == "accepted"
+
+
+@dataclass(frozen=True)
+class Block:
+    """Accepted code from the canon: one tested module a repo pulls instead of rewriting."""
+    id: str
+    version: int
+    title: str
+    module: str
+    requires: tuple[str, ...]
+    tags: tuple[str, ...]
+    status: str
+    dir: str
+    tests: tuple[str, ...]
+    hash: str = ""
+    test_requires: tuple[str, ...] = ()
 
     @property
     def accepted(self) -> bool:
@@ -129,14 +150,19 @@ class Canon:
             self._stamp = stamp
             self._standards = {
                 s["id"]: Standard(s["id"], int(s["version"]), s["title"], tuple(s["applies_to"]),
-                                  s.get("owner", ""), s.get("status", ""), s["path"])
+                                  s.get("owner", ""), s.get("status", ""), s["path"], s.get("kind", "standard"))
                 for s in data["standards"]}
+            self._blocks = {
+                b["id"]: Block(b["id"], int(b["version"]), b["title"], b["module"], tuple(b["requires"]),
+                               tuple(b["tags"]), b.get("status", ""), b["dir"], tuple(b["tests"]), b.get("hash", ""),
+                               tuple(b.get("test_requires", [])))
+                for b in data.get("blocks", [])}
             self._scaffolds = {
                 s["id"]: Scaffold(s["id"], int(s["version"]), s["title"], tuple(s["path"]), tuple(s["tags"]),
                                   s.get("status", ""), dict(s.get("defaults", {})), s["dir"], tuple(s["files"]),
                                   s.get("hash", ""))
                 for s in data.get("scaffolds", [])}
-        return {"standards": self._standards, "scaffolds": self._scaffolds}
+        return {"standards": self._standards, "scaffolds": self._scaffolds, "blocks": self._blocks}
 
     @property
     def standards(self) -> dict[str, Standard]:
@@ -145,6 +171,31 @@ class Canon:
     @property
     def scaffolds(self) -> dict[str, Scaffold]:
         return self._index()["scaffolds"]
+
+    @property
+    def blocks(self) -> dict[str, Block]:
+        return self._index()["blocks"]
+
+    def block_about(self, bid: str) -> str:
+        return _front_matter((self.root / self.blocks[bid].dir / "BLOCK.md").read_text())[1]
+
+    def block_files(self, bid: str, package: str) -> dict[str, str]:
+        """{repo path: text} for a block: its module under src/<package>/ and its tests under
+        tests/ with {{package}} filled. Refuses a block whose files no longer match the index."""
+        b = self.blocks[bid]
+        base = self.root / b.dir
+        digest = hashlib.sha256((base / "BLOCK.md").read_bytes())
+        code_rel = f"code/{b.module}.py"
+        rels = [code_rel, *(f"tests/{t}" for t in b.tests)]
+        for rel in rels:
+            digest.update(rel.encode() + (base / rel).read_bytes())
+        if b.hash and digest.hexdigest()[:12] != b.hash:
+            raise CanonError(f"block {bid}: its files changed since index.json was built; "
+                             "run scripts/build_index.py in the canon (and bump its version)")
+        out = {f"src/{package}/{b.module}.py": (base / code_rel).read_text()}
+        for t in b.tests:
+            out[f"tests/{t}"] = _fill((base / "tests" / t).read_text(), {"package": package})
+        return out
 
     def scaffold_about(self, sid: str) -> str:
         return _front_matter((self.root / self.scaffolds[sid].dir / "SCAFFOLD.md").read_text())[1]

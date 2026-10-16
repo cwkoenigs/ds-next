@@ -28,7 +28,7 @@ from .kb import Canon, Skills
 
 SERVER = "ds"
 READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status",
-             "scaffold_list", "scaffold_get")
+             "scaffold_list", "scaffold_get", "block_list", "block_get")
 WRITES = ("scaffold_project", "capture")
 READ_ONLY_IDS = {f"mcp__{SERVER}__{t}" for t in READ_ONLY}
 
@@ -56,7 +56,8 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
     async def canon_list(args):
         tags = [t.strip() for t in args.get("tags", "").split(",") if t.strip()]
         stds = canon.applicable(tags) if tags else sorted(canon.standards.values(), key=lambda s: s.id)
-        return _text("\n".join(f"{s.id} v{s.version} [{', '.join(s.applies_to)}] {s.title}" for s in stds))
+        return _text("\n".join(f"{s.id} v{s.version}{' (gotcha)' if s.kind == 'gotcha' else ''} "
+                               f"[{', '.join(s.applies_to)}] {s.title}" for s in stds))
 
     @tool("canon_read", "Read one standard's full text by id.", {"id": str})
     async def canon_read(args):
@@ -146,6 +147,39 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
         return _text(f"created {parent / a.name} from {sc.id} v{sc.version}\n{r.summary()}\nfiles:\n"
                      + "\n".join(files))
 
+    @tool("block_list", "List the canon's accepted code blocks: tested modules to add to a repo instead "
+          "of writing that code yourself. Optional comma-separated tags filter them.", {"tags": str})
+    async def block_list(args):
+        tags = {t.strip() for t in args.get("tags", "").split(",") if t.strip()}
+        rows = [b for b in canon.blocks.values() if b.accepted and (not tags or tags & set(b.tags))]
+        return _text("\n".join(f"{b.id} v{b.version} module={b.module} tags={','.join(b.tags)} "
+                               f"requires={','.join(b.requires) or '-'} :: {b.title}" for b in rows)
+                     or "no accepted blocks match")
+
+    @tool("block_get", "Read one block: what it is for, its API, and its full source and tests.", {"id": str})
+    async def block_get(args):
+        b = canon.blocks.get(args["id"])
+        if b is None:
+            return _text(f"no block {args['id']!r}; block_list shows them", error=True)
+        files = canon.block_files(b.id, "<package>")
+        return _text(canon.block_about(b.id) + "\n\n" + "\n\n".join(
+            f"--- {path}\n{text}" for path, text in files.items()))
+
+    @tool("block_add", "Add an accepted block to the repo at the working directory: copies its module "
+          "into src/<package>/ and its tests into tests/, adds its requirements, records its version. "
+          "Import it from your code; never edit the copied file in place.", {"id": str})
+    async def block_add(args):
+        repo = reconcile.find_repo(cwd)
+        if repo is None:
+            return _text(f"{cwd} is not a ds repo; create one with /new first", error=True)
+        try:
+            done = scaffold.add_block(repo, args["id"], canon)
+        except (ValueError, FileExistsError) as e:
+            return _text(f"not added: {e}", error=True)
+        return _text(f"{done['note']}: {done['block']} v{done['version']}\nfiles: {', '.join(done['files']) or '-'}\n"
+                     f"requirements added: {', '.join(done['requires']) or '-'} (run uv sync)"
+                     + (f"\nadd by hand, no one-line list found: {', '.join(done['manual'])}" if done["manual"] else ""))
+
     @tool("capture", "Draft a proposed canon standard from something learned in this session "
           "(a gotcha, a decision, a pattern). Writes a draft for review; never edits the canon.", {
               "type": "object",
@@ -181,7 +215,7 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
                      f"(the so-capture skill does it), then run scripts/build_index.py.")
 
     return [canon_list, canon_read, skills_list, skill_read, project_status, scaffold_list, scaffold_get,
-            scaffold_project, capture]
+            scaffold_project, block_list, block_get, block_add, capture]
 
 
 def system_prompt(cwd: Path, canon: Canon, skills: Skills) -> str:
@@ -192,7 +226,8 @@ def system_prompt(cwd: Path, canon: Canon, skills: Skills) -> str:
 
 The knowledge system has three parts, all readable through your `ds` tools:
 - the canon: {len(canon.standards)} versioned standards, the only place team rules are written,
-  and {len(canon.scaffolds)} project scaffolds ({", ".join(canon.scaffolds)}), the only accepted project shapes;
+  and {len(canon.scaffolds)} project scaffolds ({", ".join(canon.scaffolds)}), the only accepted project shapes,
+  and {len(canon.blocks)} blocks of accepted, tested code;
 - skills-os: {len(skills.all)} procedures (SKILL.md files) for how the team works;
 - docs-ds: the site that renders both (the user runs /docs; you do not).
 
@@ -211,6 +246,9 @@ Rules:
 - If the user asks for a project in chat instead, propose a complete draft in one message
   (scaffold, name, purpose, and suggested values for the rest), ask for one confirmation, and
   create it the same way. Never ask one question at a time. Never write project files yourself.
+- Before writing code, block_list for accepted code that already does it, and block_add it rather
+  than writing your own; import it from the package. Before building anything, read the gotchas
+  (canon_list marks them) whose tags match the work: they are mistakes already made here once.
 - When a skill fits the request, skill_read it and follow it.
 - When the session uncovers something the team should remember, offer to capture it.
 - Be brief. This is a terminal.

@@ -23,6 +23,7 @@ class Report:
     declined: dict[str, str] = field(default_factory=dict)
     pending: list[str] = field(default_factory=list)      # "id vN" strings
     overdue: list[str] = field(default_factory=list)      # declines past their revisit date
+    blocks: list[str] = field(default_factory=list)       # "id vN" of accepted code in use
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -148,6 +149,22 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
             rep.adopted.append(std.id)
         elif not any(err.startswith(f"{std.id}:") for err in rep.errors):
             rep.pending.append(f"{std.id} v{std.version}")
+
+    blocks = manifest.get("blocks", {})
+    if not isinstance(blocks, dict) or not all(isinstance(e, dict) for e in blocks.values()):
+        rep.errors.append("[blocks] must hold one table per block, like [blocks.block-text-safety]")
+        blocks = {}
+    for bid, e in blocks.items():
+        b = canon.blocks.get(bid)
+        v = _version(e)
+        if b is None:
+            rep.errors.append(f"manifest uses block {bid}, which the canon does not have")
+        elif v is None or v > b.version:
+            rep.errors.append(f"block {bid}: version must be a whole number from 1 to v{b.version}, not {e.get('version')!r}")
+        else:
+            rep.blocks.append(f"{bid} v{v}")
+            if v < b.version:
+                rep.pending.append(f"{bid} v{b.version} (block; this repo has v{v})")
 
     for f in _docs(repo):
         try:

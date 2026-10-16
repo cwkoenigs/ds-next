@@ -304,3 +304,80 @@ def write(a: Answers, dest: Path, canon: Canon | None = None, skills: Skills | N
             raise ScaffoldError(f"{dest} is created and committed, but the pre-push hook is not "
                                 f"installed: {hook_problem}")
     return sorted(files)
+
+
+def _add_to_list_line(text: str, key: str, items: list[str]) -> tuple[str, list[str]] | None:
+    """Add items to a one-line TOML list `key = [...]` (the shape the scaffolds write). Returns the
+    new text and what was added (nothing when all are present), or None if there is no such line."""
+    pattern = re.compile(rf"^({re.escape(key)} = )\[(.*)\]$", re.MULTILINE)
+    m = pattern.search(text)
+    if not m:
+        return None
+    current = tomllib.loads(f"x = [{m.group(2)}]")["x"]
+    names = {re.split(r"[<>=!~\[ ;]", c, maxsplit=1)[0].lower() for c in current}
+    added = [i for i in items if re.split(r"[<>=!~\[ ;]", i, maxsplit=1)[0].lower() not in names]
+    if not added:
+        return text, []
+    line = f"{m.group(1)}[{', '.join(json_str(i) for i in [*current, *added])}]"
+    return text[:m.start()] + line + text[m.end():], added
+
+
+def add_block(repo: Path, bid: str, canon: Canon | None = None, by: str | None = None,
+              today: dt.date | None = None) -> dict:
+    """Copy an accepted canon block into a repo: its module into the package, its tests into
+    tests/, its requirements into pyproject.toml, its version into the manifest. A file the block
+    did not write before is never overwritten. Returns what was done."""
+    canon = canon or Canon()
+    repo = Path(repo).resolve()
+    b = canon.blocks.get(bid)
+    if b is None:
+        raise ValueError(f"block {bid!r}: the canon has {', '.join(canon.blocks) or 'none'}")
+    if not b.accepted:
+        raise ValueError(f"block {bid} is {b.status}, not accepted: its owner approves it in the canon")
+    manifest_path = repo / ".ds" / "manifest.toml"
+    if not manifest_path.is_file():
+        raise ValueError(f"{repo} has no .ds/manifest.toml; create it with ds-next new first")
+    manifest_text = manifest_path.read_text()
+    manifest = tomllib.loads(manifest_text)
+    package = str(manifest.get("repo", {}).get("name", "")).replace("-", "_")
+    if not package or not (repo / "src" / package).is_dir():
+        raise ValueError(f"{repo} has no src/{package}/ package to add the block to")
+    have = manifest.get("blocks", {}).get(bid, {}).get("version")
+    if have == b.version:
+        return {"block": bid, "version": b.version, "files": [], "requires": [], "manual": [],
+                "note": "already at this version"}
+    files = canon.block_files(bid, package)
+    targets = {rel: _inside(repo, rel) for rel in files}
+    if have is None:
+        clash = [rel for rel, t in targets.items() if t.exists()]
+        if clash:
+            raise FileExistsError(f"not added: {', '.join(clash)} already exist and were not written by {bid}")
+    for rel, text in files.items():
+        targets[rel].parent.mkdir(parents=True, exist_ok=True)
+        targets[rel].write_text(text)
+    added: list[str] = []
+    manual: list[str] = []
+    pyproject = repo / "pyproject.toml"
+    for key, wanted in (("dependencies", list(b.requires)), ("dev", list(b.test_requires))):
+        if not wanted:
+            continue
+        text = pyproject.read_text() if pyproject.is_file() else ""
+        result = _add_to_list_line(text, key, wanted)
+        if result is None:                   # no one-line list to add to: say so, never skip in silence
+            manual += [f"{w} ({key})" for w in wanted]
+            continue
+        new, got = result
+        if got:
+            pyproject.write_text(new)
+        added += got
+    today = today or dt.date.today()
+    table = (f"[blocks.{bid}]\nversion = {b.version}\nby = {json_str(by or _git_user())}\n"
+             f'on = "{today}"\nmodule = {json_str(f"src/{package}/{b.module}.py")}\n')
+    existing = re.compile(rf"^\[blocks\.{re.escape(bid)}\]\n(?:(?!\[).*\n?)*", re.MULTILINE)
+    if existing.search(manifest_text):
+        manifest_text = existing.sub(table + "\n", manifest_text, count=1)
+    else:
+        manifest_text = manifest_text.rstrip("\n") + "\n\n" + table
+    manifest_path.write_text(manifest_text)
+    return {"block": bid, "version": b.version, "files": sorted(files), "requires": added, "manual": manual,
+            "note": "updated" if have is not None else "added"}

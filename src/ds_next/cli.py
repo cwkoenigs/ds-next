@@ -95,6 +95,32 @@ def _first_sentence(s: str) -> str:
 
 
 @app.command()
+def blocks():
+    """The canon's accepted code blocks."""
+    for b in Canon().blocks.values():
+        out.print(f"{b.id:28} v{b.version} {b.status:9} {b.title}")
+
+
+@app.command()
+def add(block: str, path: Path = typer.Argument(Path("."), help="repo, or a directory inside one")):
+    """Add an accepted canon block to this repo, without the agent."""
+    repo = reconcile_mod.find_repo(path.resolve())
+    if repo is None:
+        out.print(f"{path.resolve()} is not a ds repo", style="red")
+        raise typer.Exit(1)
+    try:
+        done = scaffold.add_block(repo, block, Canon())
+    except (ValueError, FileExistsError) as e:
+        out.print(f"not added: {e}", style="red")
+        raise typer.Exit(2) from None
+    out.print(f"{done['note']}: {done['block']} v{done['version']} -> {', '.join(done['files']) or 'no files'}")
+    if done["requires"]:
+        out.print(f"requirements added: {', '.join(done['requires'])}. Run uv sync.")
+    if done["manual"]:
+        out.print(f"add these by hand, pyproject.toml has no one-line list for them: {', '.join(done['manual'])}")
+
+
+@app.command()
 def skills():
     """skills-os procedures."""
     for s in Skills().all.values():
@@ -120,8 +146,11 @@ def docs(output: Path = typer.Option(None, "--out", help="build directory (defau
 
 
 @app.command()
-def ask(prompt: str,
-        yes: bool = typer.Option(False, "--yes", help="allow ds write tools (scaffold, capture) without asking"),
+def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from a file"),
+        yes: bool = typer.Option(False, "--yes", help="allow ds write tools (scaffold, block_add, capture)"),
+        yes_all: bool = typer.Option(False, "--yes-all", help="allow every tool, Bash and file edits included: "
+                                     "only for a scratch repo you will inspect afterwards"),
+        effort: str = typer.Option("low", "--effort", help="thinking effort: minimal, low, medium, high, max"),
         model: str | None = typer.Option(None, "--model", "-m")):
     """One turn through Cortex Code, printed the way the terminal prints it."""
     from cortex_agent_sdk.cortexcode import PermissionResultAllow, PermissionResultDeny
@@ -129,15 +158,21 @@ def ask(prompt: str,
     from .agent import Agent
     from .ui import describe_permission, render
 
+    if prompt.startswith("@"):
+        prompt = Path(prompt[1:]).read_text()
+
     async def permit(tool_name, inp, ctx):
-        title, _ = describe_permission(tool_name, inp)
-        if yes and title in ("scaffold_project", "capture"):
+        title, detail = describe_permission(tool_name, inp)
+        if yes_all or (yes and title in ("scaffold_project", "block_add", "capture")):
+            if yes_all:
+                out.print(f"  ⎿  approved by --yes-all: {title} {detail.splitlines()[0][:100] if detail else ''}",
+                          style="yellow")
             return PermissionResultAllow()
         return PermissionResultDeny(message=f"{title} is not allowed in a one-shot run; rerun with --yes "
-                                    "for ds write tools, or use the terminal.")
+                                    "for ds write tools, --yes-all for everything, or use the terminal.")
 
     async def go():
-        agent = Agent(Path.cwd(), ask_permission=permit, model=model)
+        agent = Agent(Path.cwd(), ask_permission=permit, model=model, effort=effort)
         state: dict = {}
         try:
             async for msg in agent.turn(prompt):

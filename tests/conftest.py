@@ -26,7 +26,8 @@ def make_canon(root: Path, bump: dict[str, int] | None = None) -> Canon:
     for sid, status, path, tags in [("python-cli", "accepted", ["python", "cli"], ["python", "package", "cli"]),
                                     ("python-draft", "proposed", ["python", "draft"], ["python"])]:
         d = root / "scaffolds" / sid
-        files = {"pyproject.toml": 'name = "{{name}}"\ndescription = {{purpose_json}}\n',
+        files = {"pyproject.toml": '[project]\nname = "{{name}}"\ndescription = {{purpose_json}}\n'
+                                   'dependencies = []\n\n[dependency-groups]\ndev = ["pytest>=8"]\n',
                  "src/__package__/__init__.py": '"""{{purpose}}"""\n',
                  "dot-gitignore": ".venv/\n"}
         for rel, text in files.items():
@@ -39,7 +40,25 @@ def make_canon(root: Path, bump: dict[str, int] | None = None) -> Canon:
         scaffolds.append({"id": sid, "version": 3, "title": f"T {sid}", "path": path, "tags": tags,
                           "owner": "o", "status": status, "defaults": {"test_cmd": "uv run pytest -q"},
                           "hash": digest.hexdigest()[:12], "dir": f"scaffolds/{sid}", "files": sorted(files)})
-    (root / "index.json").write_text(json.dumps({"generated": "today", "standards": rows, "scaffolds": scaffolds}))
+    blocks = []
+    for bid, status, version in [("block-demo", "accepted", (bump or {}).get("block-demo", 1)),
+                                 ("block-draft", "proposed", 1)]:
+        d = root / "blocks" / bid
+        (d / "code").mkdir(parents=True, exist_ok=True)
+        (d / "tests").mkdir(exist_ok=True)
+        (d / "BLOCK.md").write_text(f"---\nid: {bid}\n---\n\n# {bid}\n\nAbout {bid} v{version}.\n")
+        (d / "code" / "demo_mod.py").write_text(f'VERSION = {version}\n\n\ndef shout(s):\n    return s.upper()\n')
+        (d / "tests" / "test_demo_mod.py").write_text("from {{package}}.demo_mod import shout\n\n\n"
+                                                       "def test_shout():\n    assert shout('a') == 'A'\n")
+        digest = hashlib.sha256((d / "BLOCK.md").read_bytes())
+        for rel in ("code/demo_mod.py", "tests/test_demo_mod.py"):
+            digest.update(rel.encode() + (d / rel).read_bytes())
+        blocks.append({"id": bid, "version": version, "title": f"T {bid}", "module": "demo_mod",
+                       "requires": ["rich>=13"], "test_requires": ["pyyaml>=6"], "tags": ["python"], "owner": "o",
+                       "status": status, "hash": digest.hexdigest()[:12], "dir": f"blocks/{bid}",
+                       "tests": ["test_demo_mod.py"]})
+    (root / "index.json").write_text(json.dumps({"generated": "today", "standards": rows, "scaffolds": scaffolds,
+                                                 "blocks": blocks}))
     return Canon(root)
 
 
