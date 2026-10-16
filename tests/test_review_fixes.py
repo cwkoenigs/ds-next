@@ -420,3 +420,29 @@ def test_a_decline_reason_must_be_text(tmp_path, canon):
         'by = "ck"\nreason = 2026-10-16\nrevisit = 2027-01-01\n')
     r = reconcile.check(tmp_path, canon)
     assert not r.ok and any("needs reason" in e for e in r.errors), r.errors
+
+
+# -- fourth Codex review, 2026-10-16
+
+def test_an_existing_hook_is_kept_and_runs_first(tmp_path, canon, skills):
+    repo = tmp_path / "demo-cli"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    theirs = repo / ".git" / "hooks" / "pre-push"
+    theirs.write_text("#!/bin/sh\necho their-check-ran\nexit 3\n")
+    theirs.chmod(0o755)
+    scaffold.write(scaffold.Answers(**ANSWERS), repo, canon, skills)
+    assert "their-check-ran" in (repo / ".git" / "hooks" / "pre-push.local").read_text()
+    r = subprocess.run(["sh", str(theirs)], cwd=repo, capture_output=True, text=True, check=False)
+    assert "their-check-ran" in r.stdout and r.returncode == 3        # their verdict still stops the push
+    assert scaffold.install_hook(repo) is None                         # reinstalling ours is idempotent
+    assert "their-check-ran" in (repo / ".git" / "hooks" / "pre-push.local").read_text()
+
+
+def test_a_newer_version_reopens_a_decline(tmp_path, canon, skills):
+    a = scaffold.Answers(**ANSWERS, declines={"testing": "covered upstream"})
+    scaffold.write(a, tmp_path / a.name, canon, skills, git=False)
+    assert "testing" in reconcile.check(tmp_path / a.name, canon).declined
+    newer = make_canon(tmp_path / "c2", bump={"testing": 2})
+    r = reconcile.check(tmp_path / a.name, newer)
+    assert r.ok and "testing" not in r.declined
+    assert r.pending == ["testing v2 (declined at v1)"]

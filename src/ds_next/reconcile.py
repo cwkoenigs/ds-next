@@ -137,6 +137,12 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
         e = entries.get(std.id, {})
         status = e.get("status")
         if status == "declined" and std.id in rep.declined:
+            if (_version(e) or 0) >= std.version:
+                continue
+            # a decline answers the version it was made against; a newer one is a new question
+            del rep.declined[std.id]
+            rep.overdue = [s for s in rep.overdue if s != std.id]
+            rep.pending.append(f"{std.id} v{std.version} (declined at v{_version(e)})")
             continue
         if status == "adopted" and (_version(e) or 0) >= std.version:
             rep.adopted.append(std.id)

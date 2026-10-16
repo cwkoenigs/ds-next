@@ -193,13 +193,21 @@ None yet.
     return files
 
 
+HOOK_MARKER = "# ds:derived ds-next hooks."
+
+
 def _hook_text() -> str:
     """The pre-push hook. It finds ds-next on PATH or where it ran from when the hook was made,
     and says so out loud when it cannot, instead of skipping the check in silence."""
     here = shutil.which("ds-next") or str(Path(sys.argv[0]).resolve())
     fallback = here if Path(here).name == "ds-next" else ""
     return f"""#!/bin/sh
-# ds:derived ds-next hooks. Pending standards never block; broken pointers and a bad manifest do.
+{HOOK_MARKER} Pending standards never block; broken pointers and a bad manifest do.
+# A pre-push hook that was here before ds-next is kept as pre-push.local and runs first.
+HERE="$(dirname "$0")"
+if [ -x "$HERE/pre-push.local" ]; then
+  "$HERE/pre-push.local" "$@" || exit $?
+fi
 DS="$(command -v ds-next 2>/dev/null)"
 [ -z "$DS" ] && [ -x {shlex.quote(fallback)} ] && DS={shlex.quote(fallback)}
 if [ -z "$DS" ]; then
@@ -231,6 +239,12 @@ def install_hook(repo: Path) -> str | None:
     hook = hooks / "pre-push"
     if hook.is_symlink():          # never write through a link to somewhere else
         hook.unlink()
+    if hook.exists() and HOOK_MARKER not in hook.read_text(errors="replace"):
+        # someone else's hook (a template's, a team's): keep it and run it first, never drop it
+        local = hooks / "pre-push.local"
+        if local.exists() or local.is_symlink():
+            return f"{hook} and {local} both exist, so ds-next left them alone"
+        hook.rename(local)
     hook.write_text(_hook_text())
     hook.chmod(0o755)
     return None
