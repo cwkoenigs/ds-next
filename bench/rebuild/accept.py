@@ -1,5 +1,8 @@
 """Acceptance checks for the rebuild, fixed before it ran. Run: python accept.py <repo> <console-script>
 
+v2 (before the second rebuild) adds three checks the first rebuild showed were missing: no
+traceback anywhere, /exit exits with status 0, and /new involves a Cortex turn.
+
 Static checks read the repo; driven checks run the built terminal in a pseudo-terminal the way a
 person would. Each check passes or fails; nothing is judged by eye."""
 from __future__ import annotations
@@ -42,6 +45,7 @@ class Term:
             os.environ.update(COLUMNS="120", LINES="40", PROMPT_TOOLKIT_NO_CPR="1")
             os.execv(exe, [exe])
         self.buf = ""
+        self.status: int | None = None
 
     def read(self, secs: float) -> bool:
         end = time.time() + secs
@@ -74,7 +78,13 @@ class Term:
         return None
 
     def alive(self) -> bool:
-        return os.waitpid(self.pid, os.WNOHANG) == (0, 0)
+        if self.status is not None:
+            return False
+        pid, status = os.waitpid(self.pid, os.WNOHANG)
+        if pid == 0:
+            return True
+        self.status = os.waitstatus_to_exitcode(status)
+        return False
 
     def close(self) -> None:
         try:
@@ -130,6 +140,7 @@ try:
     picked = term.wait(r"python|scaffold", 30)
     term.send("\r")                              # first scaffold
     term.wait(r"name|purpose", 20)
+    submitted_at = len(term.buf)
     term.send("made-by-rebuild\tA repository created by the rebuilt terminal\r")
     for _ in range(6):                           # approve whatever it asks, up to six times
         out = term.wait(r"allow|approve|\by/n\b|\[y|created|›", 240) or ""
@@ -143,12 +154,18 @@ try:
           ", ".join(sorted(p.name for p in made.iterdir())) if made.is_dir() else "no folder")
     log = subprocess.run(["git", "-C", str(made), "log", "--oneline"], capture_output=True, text=True, check=False)
     check("/new commits it", made.is_dir() and log.returncode == 0 and bool(log.stdout.strip()))
+    after_submit = term.buf[submitted_at:]
+    check("v2: /new involves a Cortex turn", bool(re.search(r"⏺|\d+ turns? ·", after_submit)))
+    exit_at = len(term.buf)
     term.send("/exit\r")
     term.read(5)
     check("/exit leaves", not term.alive())
+    check("v2: /exit exits cleanly", term.status == 0 and "Traceback" not in term.buf[exit_at:],
+          f"status {term.status}")
 finally:
     term.close()
     (work / "transcript.txt").write_text(term.buf)
+    check("v2: no traceback in the session", "Traceback (most recent call last)" not in term.buf)
     print(f"transcript: {work / 'transcript.txt'}")
 
 passed = sum(ok for _, ok, _ in results)
