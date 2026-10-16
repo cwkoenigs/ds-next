@@ -1,0 +1,9 @@
+name = "claims-features"
+purpose = "Feature store for claims models"
+owner = "ckoenigs"
+kind = "cli"
+snowflake = "ANALYTICS.CLAIMS"
+notes = "Uses the CLM-adjudication table, not raw claims"
+
+[declines]
+review-cadence = "Batch-only for now; revisit when the nightly job is incremental"

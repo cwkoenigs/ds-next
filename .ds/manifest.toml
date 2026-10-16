@@ -1,0 +1,102 @@
+[repo]
+name = "ds-next"
+tags = ["python", "package", "cli"]
+created = "2026-10-16"
+interview = ".ds/interview.md"
+ds_version = "0.1.0"
+
+[standards.adr-000]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.architecture]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.change-cadence]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.cicd]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.code-review]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.compliance-rubric]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.decision-logs]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.error-handling]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.lifecycle]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.llm-agents]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.normative-language]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.operating-principles]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.review-cadence]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.security]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.templates]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"
+
+[standards.testing]
+status = "adopted"
+version = 1
+by = "ckoenigs"
+on = "2026-10-16"

@@ -1,0 +1,127 @@
+"""The knowledge base: three repositories on disk, read-only from here.
+
+- canon     standards, one file each, indexed by index.json (what is true)
+- skills-os SKILL.md procedures (how we work)
+- docs-ds   the Docusaurus shell that renders both (how people read it)
+
+Each is found by an environment variable, then beside the others under ~/Developer.
+Nothing in this module writes.
+"""
+from __future__ import annotations
+
+import fnmatch
+import json
+import os
+import re
+from dataclasses import dataclass
+from functools import cached_property
+from pathlib import Path
+
+POINTER_RE = re.compile(r"\[\[([a-z0-9-]+)(?:@(\d+))?\]\]")
+CODE_RE = re.compile(r"```.*?```|`[^`\n]*`", re.DOTALL)
+
+
+def _find(env: str, name: str) -> Path | None:
+    if os.environ.get(env):
+        return Path(os.environ[env]).expanduser()
+    for base in (Path.home() / "Developer", Path.home() / "code", Path.home() / ".ds"):
+        if (base / name).is_dir():
+            return base / name
+    return None
+
+
+def canon_path() -> Path | None:
+    return _find("DS_CANON", "canon")
+
+
+def skills_path() -> Path | None:
+    return _find("DS_SKILLS", "skills-os")
+
+
+def docs_shell_path() -> Path | None:
+    return _find("DS_DOCS_SHELL", "docs-ds")
+
+
+def _front_matter(text: str) -> tuple[dict[str, str], str]:
+    """Flat `key: value` front matter. Enough for canon and SKILL.md; not a YAML parser."""
+    if not text.startswith("---\n"):
+        return {}, text
+    head, _, body = text[4:].partition("\n---\n")
+    meta = {}
+    for line in head.splitlines():
+        key, sep, value = line.partition(":")
+        if sep and not line.startswith(" "):
+            meta[key.strip()] = value.strip().strip('"')
+    return meta, body.lstrip("\n")
+
+
+@dataclass(frozen=True)
+class Standard:
+    id: str
+    version: int
+    title: str
+    applies_to: tuple[str, ...]
+    owner: str
+    status: str
+    path: str
+
+    def applies(self, tags: list[str] | tuple[str, ...]) -> bool:
+        return any(p == "*" or any(fnmatch.fnmatchcase(t, p) for t in tags) for p in self.applies_to)
+
+
+class Canon:
+    def __init__(self, root: Path | None = None):
+        root = root or canon_path()
+        if root is None or not (root / "index.json").is_file():
+            raise FileNotFoundError(
+                "canon not found: set DS_CANON or clone it to ~/Developer/canon")
+        self.root = Path(root)
+
+    @cached_property
+    def standards(self) -> dict[str, Standard]:
+        data = json.loads((self.root / "index.json").read_text())
+        return {
+            s["id"]: Standard(s["id"], int(s["version"]), s["title"], tuple(s["applies_to"]),
+                              s.get("owner", ""), s.get("status", ""), s["path"])
+            for s in data["standards"]
+        }
+
+    def applicable(self, tags: list[str] | tuple[str, ...]) -> list[Standard]:
+        return sorted((s for s in self.standards.values() if s.applies(tags)), key=lambda s: s.id)
+
+    def read(self, sid: str) -> str:
+        if sid not in self.standards:
+            raise KeyError(f"no standard {sid!r} in the canon")
+        return _front_matter((self.root / self.standards[sid].path).read_text())[1]
+
+    def broken_pointers(self, text: str) -> list[str]:
+        """Pointer ids in prose that the canon does not have. Code is skipped so a doc can
+        talk about the `[[id]]` syntax without making a claim."""
+        prose = CODE_RE.sub("", text)
+        return sorted({m.group(1) for m in POINTER_RE.finditer(prose)} - set(self.standards))
+
+
+@dataclass(frozen=True)
+class Skill:
+    name: str
+    description: str
+    path: Path
+
+    def read(self) -> str:
+        return _front_matter(self.path.read_text())[1]
+
+
+class Skills:
+    def __init__(self, root: Path | None = None):
+        self.root = root or skills_path()
+
+    @cached_property
+    def all(self) -> dict[str, Skill]:
+        if self.root is None or not self.root.is_dir():
+            return {}
+        out = {}
+        for f in sorted(self.root.glob("*/SKILL.md")):
+            meta, _ = _front_matter(f.read_text())
+            name = meta.get("name", f.parent.name)
+            out[name] = Skill(name, meta.get("description", ""), f)
+        return out
