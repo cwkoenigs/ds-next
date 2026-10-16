@@ -4,9 +4,9 @@ version = "0.1.0"
 description = "ds, rebuilt small: a Claude-Code-style terminal over Cortex Code that scaffolds projects from the canon"
 requires-python = ">=3.12"
 dependencies = [
-    "cortex-code-agent-sdk==1.0.7",
-    # The SDK's in-process MCP servers use the 1.x decorator API, removed in mcp 2.
-    "mcp>=1.0,<2",
+    # Snowflake's Cortex Agent SDK (Public Preview, 2026-10-13); its cortexcode module drives the
+    # local Cortex Code CLI and supersedes cortex-code-agent-sdk. It caps mcp below 2 itself.
+    "snowflake-cortex-agent-sdk==0.0.2",
     "rich>=13",
     "prompt-toolkit>=3.0.40",
     "typer>=0.12",

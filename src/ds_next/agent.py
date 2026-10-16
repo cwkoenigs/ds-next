@@ -1,4 +1,4 @@
-"""Cortex Code, driven through cortex-code-agent-sdk, with the knowledge base as tools.
+"""Cortex Code, driven through snowflake-cortex-agent-sdk (its cortexcode module), with the knowledge base as tools.
 
 The tools run in this process (an SDK MCP server named "ds"), so the agent reads the same
 canon and skills the deterministic commands read, and the only thing that writes a project is
@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from cortex_code_agent_sdk import (
+from cortex_agent_sdk.cortexcode import (
     CortexCodeAgentOptions,
     CortexCodeSDKClient,
     Message,

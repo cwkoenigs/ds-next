@@ -16,7 +16,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from cortex_code_agent_sdk import (
+from cortex_agent_sdk.cortexcode import (
     AssistantMessage,
     CortexCodeSDKError,
     PermissionResultAllow,

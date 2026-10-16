@@ -6,7 +6,14 @@ import sys
 from pathlib import Path
 
 import pytest
-from cortex_code_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolResultBlock, ToolUseBlock, UserMessage
+from cortex_agent_sdk.cortexcode import (
+    AssistantMessage,
+    ResultMessage,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+)
 from rich.console import Console
 
 from ds_next import agent, reconcile

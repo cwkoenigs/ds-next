@@ -119,7 +119,7 @@ def ask(prompt: str,
         yes: bool = typer.Option(False, "--yes", help="allow ds write tools (scaffold, capture) without asking"),
         model: str | None = typer.Option(None, "--model", "-m")):
     """One turn through Cortex Code, printed the way the terminal prints it."""
-    from cortex_code_agent_sdk import PermissionResultAllow, PermissionResultDeny
+    from cortex_agent_sdk.cortexcode import PermissionResultAllow, PermissionResultDeny
 
     from .agent import Agent
     from .ui import describe_permission, render

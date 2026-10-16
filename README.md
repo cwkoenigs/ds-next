@@ -2,7 +2,7 @@
 
 <!-- ds:local interview 2026-10-16 -->
 `ds`, rebuilt small. A terminal that looks and behaves like Claude Code, drives Cortex Code
-through its Python SDK (`cortex-code-agent-sdk`), and scaffolds projects from the team's
+through Snowflake's Python SDK (`snowflake-cortex-agent-sdk`, its `cortexcode` module), and scaffolds projects from the team's
 knowledge base. About 1,350 lines of Python in seven modules.
 
 Owner: ckoenigs
@@ -109,10 +109,14 @@ package, a passing test, ruff, and a GitLab CI file. Its docs are README.md, an 
 applicable standard adopted or declined with a reason and a 90-day revisit, `.ds/interview.md`,
 and a pre-push hook. A CLI is also tagged `package`, so it inherits package standards.
 
-## Findings from building against Cortex Code 1.2.14 and SDK 1.0.7
+## Findings from building against Cortex Code 1.2.14
 
-- The SDK's in-process MCP server uses the `mcp` 1.x decorator API, which `mcp` 2 removed. The
-  dependency is pinned to `mcp<2`; without it `create_sdk_mcp_server` raises `AttributeError`.
+- The SDK is `snowflake-cortex-agent-sdk` 0.0.2, Public Preview since 2026-10-13. Its
+  `cortex_agent_sdk.cortexcode` module has the same API as the older `cortex-code-agent-sdk`
+  (last release 1.0.7, 2026-07-31), which it supersedes.
+- Neither SDK supports `mcp` 2: both build in-process tool servers with the 1.x decorator API that
+  `mcp` 2 removed. The new SDK declares `mcp<2` itself. The old one declares `mcp>=1.0` unbounded,
+  so a fresh install of it picks up `mcp` 2 and `create_sdk_mcp_server` raises `AttributeError`.
 - `allowed_tools` is exclusive in Cortex: every tool not listed is blocked before `can_use_tool` is
   asked, Bash included. ds-next sets no allowlist and approves read-only tools in its callback.
 - `can_use_tool` receives a kind (`"MCP"`, `"Bash"`) and `{"action", "resource"}`. For MCP tools,
