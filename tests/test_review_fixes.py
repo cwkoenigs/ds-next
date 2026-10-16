@@ -537,3 +537,15 @@ def test_docs_copy_linked_images_and_keep_both_homepages(tmp_path, canon, skills
     assert "Keep me" not in (content / "index.md").read_text()          # the README is still home
     assert "[index](../repo-index.md)" in (content / "docs" / "guide.md").read_text()
     assert "[here](index.md)" in (content / "repo-index.md").read_text()
+
+
+# -- ninth Codex review, 2026-10-16
+
+def test_a_typed_snowflake_tag_survives_a_blank_schema(tmp_path, canon, skills):
+    from ds_next.ui import extra_tags
+    tags = extra_tags("snowflake, python, Snowflake", ("python", "package", "cli"))
+    assert tags == ["snowflake"]
+    a = scaffold.Answers(**ANSWERS, tags=tags).resolve(canon)
+    assert "snowflake" in a.tags and a.snowflake == ""
+    files = scaffold.render(scaffold.Answers(**ANSWERS, tags=tags), canon, skills)
+    assert "snowflake" in tomllib.loads(files[".ds/manifest.toml"])["repo"]["tags"]

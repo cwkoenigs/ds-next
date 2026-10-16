@@ -146,6 +146,13 @@ def render(console: Console, msg: Any, state: dict) -> None:
         console.print(Text("  " + " · ".join(parts), style=DIM))
 
 
+def extra_tags(typed: str, scaffold_tags: tuple[str, ...]) -> list[str]:
+    """The tags the user typed in the form, minus the scaffold's own. Kept as typed: a tag such as
+    snowflake must survive even when the schema field that would also imply it is blank."""
+    tags = [t.strip().lower() for t in typed.split(",") if t.strip()]
+    return [t for t in dict.fromkeys(tags) if t not in scaffold_tags]
+
+
 def asks(text: str) -> bool:
     """Whether a reply ends by asking something, even when an example follows the question mark."""
     tail = text.strip().splitlines()[-3:] if text.strip() else []
@@ -489,7 +496,7 @@ class Repl:
         a = answers(v).resolve(self.canon)
         draft = {k: val for k, val in {
             "scaffold": sc.id, "name": a.name, "purpose": a.purpose, "owner": a.owner, "snowflake": a.snowflake,
-            "notes": a.notes, "tags": [t for t in a.tags if t not in sc.tags and t != "snowflake"],
+            "notes": a.notes, "tags": extra_tags(v["tags"], sc.tags),
             "test_cmd": a.test_cmd, "lint_cmd": a.lint_cmd, "declines": a.declines}.items() if val}
         shown = Text()
         for k in ("name", "purpose", "snowflake", "notes", "owner", "tags", "declines"):
