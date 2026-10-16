@@ -27,7 +27,8 @@ from . import reconcile, scaffold
 from .kb import Canon, Skills
 
 SERVER = "ds"
-READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status")
+READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status",
+             "scaffold_list", "scaffold_get")
 WRITES = ("scaffold_project", "capture")
 READ_ONLY_IDS = {f"mcp__{SERVER}__{t}" for t in READ_ONLY}
 
@@ -75,15 +76,35 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
                                  "declined": r.declined, "pending": r.pending,
                                  "overdue_declines": r.overdue, "errors": r.errors}, indent=1))
 
-    @tool("scaffold_project", "Create a new repository from interview answers. The only way to "
-          "create a project: never write project files yourself.", {
+    @tool("scaffold_list", "List the canon's project scaffolds: id, version, status, menu path, tags.", {})
+    async def scaffold_list(args):
+        return _text("\n".join(f"{sc.id} v{sc.version} {sc.status} [{' > '.join(sc.path)}] "
+                                f"tags={','.join(sc.tags)} {sc.title}" for sc in canon.scaffolds.values())
+                     or "the canon has no scaffolds")
+
+    @tool("scaffold_get", "Fetch one accepted scaffold from the canon: what it is, its version, the "
+          "tags it gives a repo, its default commands and the files it creates. Required before "
+          "scaffold_project, which takes the version this returns.", {"id": str})
+    async def scaffold_get(args):
+        sc = canon.scaffolds.get(args["id"])
+        if sc is None:
+            return _text(f"no scaffold {args['id']!r}; scaffold_list shows them", error=True)
+        return _text(json.dumps({"id": sc.id, "version": sc.version, "status": sc.status,
+                                 "accepted": sc.accepted, "title": sc.title, "tags": sc.tags,
+                                 "defaults": sc.defaults, "files": sc.files,
+                                 "about": canon.scaffold_about(sc.id)}, indent=1))
+
+    @tool("scaffold_project", "Create a new repository from an accepted canon scaffold and the "
+          "answers. The only way to create a project: never write project files yourself.", {
               "type": "object",
               "properties": {
+                  "scaffold": {"type": "string", "description": "scaffold id from scaffold_get"},
+                  "scaffold_version": {"type": "integer", "description": "the version scaffold_get returned"},
                   "name": {"type": "string", "description": "lowercase-with-dashes"},
                   "purpose": {"type": "string", "description": "one line"},
                   "owner": {"type": "string"},
-                  "kind": {"type": "string", "enum": list(scaffold.KINDS)},
-                  "tags": {"type": "array", "items": {"type": "string"}},
+                  "tags": {"type": "array", "items": {"type": "string"},
+                           "description": "extra tags beyond the scaffold's own"},
                   "test_cmd": {"type": "string"}, "lint_cmd": {"type": "string"},
                   "snowflake": {"type": "string", "description": "DATABASE.SCHEMA or empty"},
                   "notes": {"type": "string", "description": "what future-you should know"},
@@ -91,18 +112,25 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
                                "description": "standard id -> reason, for standards declined now"},
                   "directory": {"type": "string", "description": "parent directory; default cwd"},
               },
-              "required": ["name", "purpose", "kind"],
+              "required": ["scaffold", "scaffold_version", "name", "purpose"],
           })
     async def scaffold_project(args):
         args = dict(args)
         parent = Path(args.pop("directory", "") or cwd).expanduser()
+        version = args.pop("scaffold_version", None)
+        sc = canon.scaffolds.get(args.get("scaffold", ""))
+        if sc is None or version != sc.version:
+            current = f"v{sc.version}" if sc else "unknown"
+            return _text(f"not created: scaffold {args.get('scaffold')!r} is {current} in the canon, "
+                         f"you passed v{version}. Fetch it with scaffold_get first.", error=True)
         try:
-            a = scaffold.Answers(**{k: v for k, v in args.items() if v not in (None, "") or k == "snowflake"})
+            a = scaffold.Answers(**{k: v for k, v in args.items() if v not in (None, "")})
             files = scaffold.write(a, parent / a.name, canon, skills)
             r = reconcile.check(parent / a.name, canon)
         except (ValueError, TypeError, FileExistsError) as e:
             return _text(f"not created: {e}", error=True)
-        return _text(f"created {parent / a.name}\n{r.summary()}\nfiles:\n" + "\n".join(files))
+        return _text(f"created {parent / a.name} from {sc.id} v{sc.version}\n{r.summary()}\nfiles:\n"
+                     + "\n".join(files))
 
     @tool("capture", "Draft a proposed canon standard from something learned in this session "
           "(a gotcha, a decision, a pattern). Writes a draft for review; never edits the canon.", {
@@ -122,7 +150,8 @@ def tools(canon: Canon, skills: Skills, cwd: Path) -> list:
         return _text(f"draft at {path}. To publish: open a canon merge request with this file "
                      f"(the so-capture skill does it), then run scripts/build_index.py.")
 
-    return [canon_list, canon_read, skills_list, skill_read, project_status, scaffold_project, capture]
+    return [canon_list, canon_read, skills_list, skill_read, project_status, scaffold_list, scaffold_get,
+            scaffold_project, capture]
 
 
 def system_prompt(cwd: Path, canon: Canon, skills: Skills) -> str:
@@ -132,20 +161,26 @@ def system_prompt(cwd: Path, canon: Canon, skills: Skills) -> str:
     return f"""You are ds, the front door to the team's knowledge system, running in a terminal.
 
 The knowledge system has three parts, all readable through your `ds` tools:
-- the canon: {len(canon.standards)} versioned standards, the only place team rules are written;
+- the canon: {len(canon.standards)} versioned standards, the only place team rules are written,
+  and {len(canon.scaffolds)} project scaffolds ({", ".join(canon.scaffolds)}), the only accepted project shapes;
 - skills-os: {len(skills.all)} procedures (SKILL.md files) for how the team works;
 - docs-ds: the site that renders both (the user runs /docs; you do not).
 
 Rules:
 - Cite standards as [[id]] pointers and read them with canon_read before relying on them.
   Never paste a standard's text into a repo file.
-- When the user wants a new project, interview them, then call scaffold_project. Ask at most
-  two questions per message and offer a default in brackets for each: purpose (one line),
-  kind (cli or package; ds-cli itself is a cli), owner [{scaffold._git_user()}], extra tags
-  beyond the ones the kind implies (python, package, and cli for a cli) [none], test command [uv run pytest -q], Snowflake DATABASE.SCHEMA [none],
-  anything future-you should know, any standard they already know they will decline and why.
-  Use canon_list with the full tag list to show what will apply before creating. Summarize the answers
-  in one short list and create when the user confirms. Never write project files yourself.
+- New projects come from accepted canon scaffolds. The /new form sends you a complete draft:
+  check it against the canon (canon_list with its tags; canon_read only a standard the answers
+  actually touch). If something is wrong or too vague to be useful, say so in at most three
+  short bullets and ask once. Never replace an answer with one you made up: a purpose, name or
+  schema you invent is not a suggestion. Offer a concrete value only when it follows from what
+  the user gave (a name fixed to lowercase-with-dashes, a decline that names a real standard).
+  Otherwise, or once the user answers, call scaffold_get for the draft's scaffold and then
+  scaffold_project with its version, passing the user's values unchanged unless they agreed to
+  a change. Do not re-ask what the draft already answers.
+- If the user asks for a project in chat instead, propose a complete draft in one message
+  (scaffold, name, purpose, and suggested values for the rest), ask for one confirmation, and
+  create it the same way. Never ask one question at a time. Never write project files yourself.
 - When a skill fits the request, skill_read it and follow it.
 - When the session uncovers something the team should remember, offer to capture it.
 - Be brief. This is a terminal.
@@ -160,7 +195,7 @@ class Agent:
     """One Cortex Code session. Connects on the first turn; `reset` starts a new session."""
 
     def __init__(self, cwd: Path, ask_permission: PermissionAsk | None = None,
-                 model: str | None = None, connection: str | None = None,
+                 model: str | None = None, connection: str | None = None, effort: str | None = "low",
                  canon: Canon | None = None, skills: Skills | None = None):
         self.cwd = Path(cwd).resolve()
         self.canon = canon or Canon()
@@ -168,7 +203,9 @@ class Agent:
         self.ask_permission = ask_permission
         self.model = model
         self.connection = connection
+        self.effort = effort      # low keeps the interview quick; /effort or --effort raises it
         self.session_id: str | None = None
+        self._resume: str | None = None
         self._client: CortexCodeSDKClient | None = None
 
     def options(self) -> CortexCodeAgentOptions:
@@ -182,6 +219,8 @@ class Agent:
             can_use_tool=self._permit,
             model=self.model,
             connection=self.connection,
+            effort=self.effort,
+            resume=self._resume,
         )
 
     async def _permit(self, tool_name: str, inp: dict[str, Any], ctx: Any):
@@ -213,6 +252,14 @@ class Agent:
             if sid:
                 self.session_id = sid
             yield msg
+
+    async def set_effort(self, effort: str | None) -> None:
+        """Effort is fixed when Cortex starts, so reconnect and resume the same conversation."""
+        self.effort = effort
+        if self._client is not None:
+            resume = self.session_id
+            await self.close()
+            self._resume = resume
 
     async def interrupt(self) -> None:
         if self._client is not None:

@@ -69,6 +69,30 @@ class Standard:
         return any(p == "*" or any(fnmatch.fnmatchcase(t, p) for t in tags) for p in self.applies_to)
 
 
+@dataclass(frozen=True)
+class Scaffold:
+    """An accepted project shape from the canon: templates plus the tags it gives a repo."""
+    id: str
+    version: int
+    title: str
+    path: tuple[str, ...]        # menu path, e.g. ("python", "cli")
+    tags: tuple[str, ...]
+    status: str
+    defaults: dict
+    dir: str
+    files: tuple[str, ...]
+
+    @property
+    def accepted(self) -> bool:
+        return self.status == "accepted"
+
+
+def _fill(text: str, values: dict[str, str]) -> str:
+    for k, v in values.items():
+        text = text.replace("{{" + k + "}}", v)
+    return text
+
+
 class Canon:
     def __init__(self, root: Path | None = None):
         root = root or canon_path()
@@ -85,6 +109,30 @@ class Canon:
                               s.get("owner", ""), s.get("status", ""), s["path"])
             for s in data["standards"]
         }
+
+    @cached_property
+    def scaffolds(self) -> dict[str, Scaffold]:
+        data = json.loads((self.root / "index.json").read_text())
+        return {
+            s["id"]: Scaffold(s["id"], int(s["version"]), s["title"], tuple(s["path"]), tuple(s["tags"]),
+                              s.get("status", ""), dict(s.get("defaults", {})), s["dir"], tuple(s["files"]))
+            for s in data.get("scaffolds", [])
+        }
+
+    def scaffold_about(self, sid: str) -> str:
+        return _front_matter((self.root / self.scaffolds[sid].dir / "SCAFFOLD.md").read_text())[1]
+
+    def render_scaffold(self, sid: str, values: dict[str, str]) -> dict[str, str]:
+        """The scaffold's templates with {{placeholders}} filled. `__package__` in a path is the
+        package name; a leading `dot-` becomes `.`, so templates never act on the canon itself."""
+        sc = self.scaffolds[sid]
+        out = {}
+        for rel in sc.files:
+            text = (self.root / sc.dir / "files" / rel).read_text()
+            parts = [("." + p[4:]) if p.startswith("dot-") else p for p in rel.split("/")]
+            target = "/".join(parts).replace("__package__", values["package"])
+            out[target] = _fill(text, values)
+        return out
 
     def applicable(self, tags: list[str] | tuple[str, ...]) -> list[Standard]:
         return sorted((s for s in self.standards.values() if s.applies(tags)), key=lambda s: s.id)

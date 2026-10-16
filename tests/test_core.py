@@ -24,14 +24,32 @@ def test_skills_front_matter(skills):
     assert skills.all["so-capture"].read().startswith("# so-capture")
 
 
-def test_cli_kind_inherits_package_standards():
-    assert scaffold.Answers(**ANSWERS).tags == ["python", "package", "cli"]
-    assert scaffold.Answers(**ANSWERS, snowflake="DB.S").tags[-1] == "snowflake"
-    # what the live agent actually sent: the kind's tags are added back, extras kept
-    assert scaffold.Answers(**ANSWERS, tags=["python", "cli", "dbt"]).tags == ["python", "package", "cli", "dbt"]
+def test_scaffold_decides_tags_and_defaults(canon):
+    a = scaffold.Answers(**ANSWERS).resolve(canon)
+    assert a.tags == ["python", "package", "cli"] and a.test_cmd == "uv run pytest -q"
+    assert scaffold.Answers(**ANSWERS, snowflake="DB.S").resolve(canon).tags[-1] == "snowflake"
+    # what the live agent sent once: only some tags. The scaffold's own come back, extras stay.
+    assert scaffold.Answers(**ANSWERS, tags=["python", "cli", "dbt"]).resolve(canon).tags == [
+        "python", "package", "cli", "dbt"]
 
 
-@pytest.mark.parametrize("bad", [{"name": "Bad Name"}, {"kind": "notebook"}, {"purpose": " "}])
+def test_only_accepted_scaffolds(canon):
+    with pytest.raises(ValueError, match="proposed, not accepted"):
+        scaffold.Answers(**ANSWERS, scaffold="python-draft").resolve(canon)
+    with pytest.raises(ValueError, match="the canon has python-cli, python-draft"):
+        scaffold.Answers(**ANSWERS, scaffold="nope").resolve(canon)
+
+
+def test_code_comes_from_the_canon_scaffold(canon, skills):
+    files = scaffold.render(scaffold.Answers(**ANSWERS), canon, skills)
+    assert files["src/claims_features/__init__.py"] == '"""Feature store for claims models"""\n'
+    assert files["pyproject.toml"] == 'name = "claims-features"\ndescription = "Feature store for claims models"\n'
+    assert ".gitignore" in files and "dot-gitignore" not in files
+    m = tomllib.loads(files[".ds/manifest.toml"])
+    assert (m["repo"]["scaffold"], m["repo"]["scaffold_version"]) == ("python-cli", 3)
+
+
+@pytest.mark.parametrize("bad", [{"name": "Bad Name"}, {"purpose": " "}])
 def test_answers_validate(bad):
     with pytest.raises(ValueError):
         scaffold.Answers(**{**ANSWERS, **bad})
@@ -57,7 +75,7 @@ def test_new_repo_reconciles_clean(tmp_path, canon, skills):
     a = scaffold.Answers(**ANSWERS, declines={"testing": "covered by the parent repo"})
     files = scaffold.write(a, tmp_path / "out" / a.name, canon, skills)
     repo = tmp_path / "out" / a.name
-    assert "src/claims_features/cli.py" in files
+    assert "src/claims_features/__init__.py" in files
     assert (repo / ".git" / "hooks" / "pre-push").stat().st_mode & 0o111
     r = reconcile.check(repo, canon)
     assert r.ok and not r.pending, r

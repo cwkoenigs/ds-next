@@ -26,10 +26,11 @@ out = Console(highlight=False, markup=False, soft_wrap=True)
 @app.callback()
 def main(ctx: typer.Context,
          model: str | None = typer.Option(None, "--model", "-m", help="Cortex model"),
-         connection: str | None = typer.Option(None, "--connection", "-c", help="Snowflake connection")):
+         connection: str | None = typer.Option(None, "--connection", "-c", help="Snowflake connection"),
+         effort: str = typer.Option("low", "--effort", help="thinking effort: minimal, low, medium, high")):
     if ctx.invoked_subcommand is None:
         from .ui import main as repl
-        repl(Path.cwd(), model, connection)
+        repl(Path.cwd(), model, connection, effort)
 
 
 @app.command()

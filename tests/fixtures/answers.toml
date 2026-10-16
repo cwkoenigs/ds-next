@@ -1,7 +1,7 @@
 name = "claims-features"
 purpose = "Feature store for claims models"
 owner = "ckoenigs"
-kind = "cli"
+scaffold = "python-cli"
 snowflake = "ANALYTICS.CLAIMS"
 notes = "Uses the CLM-adjudication table, not raw claims"
 

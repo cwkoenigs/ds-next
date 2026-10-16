@@ -21,7 +21,21 @@ def make_canon(root: Path, bump: dict[str, int] | None = None) -> Canon:
         (root / f"{sid}.md").write_text(f"---\nid: {sid}\nversion: {v}\n---\n\n# {title}\n\nBody of {sid}.\n")
         rows.append({"id": sid, "version": v, "title": title, "applies_to": applies, "owner": "o",
                      "supersedes": None, "status": "accepted", "hash": "x", "path": f"{sid}.md"})
-    (root / "index.json").write_text(json.dumps({"generated": "today", "standards": rows}))
+    scaffolds = []
+    for sid, status, path, tags in [("python-cli", "accepted", ["python", "cli"], ["python", "package", "cli"]),
+                                    ("python-draft", "proposed", ["python", "draft"], ["python"])]:
+        d = root / "scaffolds" / sid
+        files = {"pyproject.toml": 'name = "{{name}}"\ndescription = {{purpose_json}}\n',
+                 "src/__package__/__init__.py": '"""{{purpose}}"""\n',
+                 "dot-gitignore": ".venv/\n"}
+        for rel, text in files.items():
+            (d / "files" / rel).parent.mkdir(parents=True, exist_ok=True)
+            (d / "files" / rel).write_text(text)
+        (d / "SCAFFOLD.md").write_text(f"---\nid: {sid}\n---\n\n# {sid}\n\nAbout {sid}.\n")
+        scaffolds.append({"id": sid, "version": 3, "title": f"T {sid}", "path": path, "tags": tags,
+                          "owner": "o", "status": status, "defaults": {"test_cmd": "uv run pytest -q"},
+                          "hash": "x", "dir": f"scaffolds/{sid}", "files": sorted(files)})
+    (root / "index.json").write_text(json.dumps({"generated": "today", "standards": rows, "scaffolds": scaffolds}))
     return Canon(root)
 
 

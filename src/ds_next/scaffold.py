@@ -1,8 +1,9 @@
 """Answers in, a repository out. Deterministic: no model, no network.
 
-The agent's job is the interview; this module's job is the files. Every file it writes is
-either local (from an answer), inherited (a [[pointer]] into the canon, never its text), or
-code skeleton. Provenance comments say which.
+The form (or the agent) gathers the answers; this module writes the files. The code skeleton is
+an accepted scaffold from the canon, never a template held here. Every other file is either
+local (from an answer) or inherited (a [[pointer]] into the canon, never its text), and
+provenance comments say which.
 """
 from __future__ import annotations
 
@@ -11,13 +12,12 @@ import json
 import re
 import subprocess
 import tomllib
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from . import __version__
 from .kb import Canon, Skills
 
-KINDS = ("cli", "package")
 # skills-os procedures worth naming in a new repo's AGENTS.md, in the order a project meets them
 RECOMMENDED_SKILLS = ("so-build-feature-interview", "so-bug-review-interview",
                       "so-best-practice-audit", "so-capture", "so-changes")
@@ -36,31 +36,38 @@ def _git_user() -> str:
 class Answers:
     name: str
     purpose: str
+    scaffold: str = "python-cli"   # a canon scaffold id
     owner: str = field(default_factory=_git_user)
-    kind: str = "cli"
-    test_cmd: str = "uv run pytest -q"
-    lint_cmd: str = "uv run ruff check ."
-    tags: list[str] = field(default_factory=list)
-    snowflake: str = ""          # DATABASE.SCHEMA, or empty
+    test_cmd: str = ""             # empty: the scaffold's default
+    lint_cmd: str = ""
+    tags: list[str] = field(default_factory=list)   # extra tags beyond the scaffold's own
+    snowflake: str = ""            # DATABASE.SCHEMA, or empty
     notes: str = ""
     declines: dict[str, str] = field(default_factory=dict)   # standard id -> reason
 
     def __post_init__(self) -> None:
         if not NAME_RE.match(self.name):
             raise ValueError(f"name {self.name!r}: lowercase letters, digits and dashes, 2-41 chars")
-        if self.kind not in KINDS:
-            raise ValueError(f"kind {self.kind!r}: one of {', '.join(KINDS)}")
         if not self.purpose.strip():
             raise ValueError("purpose: one line on what the repo does")
-        # The kind implies tags whatever else was given: a CLI ships as a package too, so it
-        # inherits the package standards even when the interview only said "cli".
-        implied = ["python", "package", *(["cli"] if self.kind == "cli" else []),
-                   *(["snowflake"] if self.snowflake else [])]
-        self.tags = list(dict.fromkeys([*implied, *(t.strip().lower() for t in self.tags if t.strip())]))
+        self.tags = [t.strip().lower() for t in self.tags if t.strip()]
 
     @property
     def package(self) -> str:
         return self.name.replace("-", "_")
+
+    def resolve(self, canon: Canon) -> Answers:
+        """Fill what the scaffold decides: its tags (always), and its commands when none were given.
+        Refuses a scaffold the canon does not have or has not accepted."""
+        sc = canon.scaffolds.get(self.scaffold)
+        if sc is None:
+            raise ValueError(f"scaffold {self.scaffold!r}: the canon has {', '.join(canon.scaffolds) or 'none'}")
+        if not sc.accepted:
+            raise ValueError(f"scaffold {sc.id} is {sc.status}, not accepted: its owner approves it in the canon")
+        tags = [*sc.tags, *(["snowflake"] if self.snowflake else []), *self.tags]
+        return replace(self, tags=list(dict.fromkeys(tags)),
+                       test_cmd=self.test_cmd or sc.defaults.get("test_cmd", "uv run pytest -q"),
+                       lint_cmd=self.lint_cmd or sc.defaults.get("lint_cmd", "uv run ruff check ."))
 
     @classmethod
     def from_toml(cls, path: Path) -> Answers:
@@ -72,8 +79,11 @@ def _toml_str(s: str) -> str:
 
 
 def render(a: Answers, canon: Canon, skills: Skills, today: dt.date | None = None) -> dict[str, str]:
-    """Every file of the new repo, as {relative path: text}."""
+    """Every file of the new repo, as {relative path: text}: the knowledge docs from the answers,
+    the code from the canon scaffold."""
     today = today or dt.date.today()
+    a = a.resolve(canon)
+    sc = canon.scaffolds[a.scaffold]
     stds = canon.applicable(a.tags)
     unknown = sorted(set(a.declines) - {s.id for s in stds})
     if unknown:
@@ -129,6 +139,7 @@ None yet.
     lines = ["[repo]", f"name = {_toml_str(a.name)}",
              f"tags = [{', '.join(_toml_str(t) for t in a.tags)}]",
              f'created = "{today}"', 'interview = ".ds/interview.md"',
+             f'scaffold = "{sc.id}"', f"scaffold_version = {sc.version}",
              f'ds_version = "{__version__}"', ""]
     revisit = today + dt.timedelta(days=90)
     for s in stds:
@@ -146,78 +157,9 @@ None yet.
     qa = "\n".join(f"- **{k}**: {v}" for k, v in asdict(a).items())
     files[".ds/interview.md"] = f"# Interview\n\n{local}\n{qa}\n"
 
-    files["pyproject.toml"] = f"""[project]
-name = "{a.name}"
-version = "0.1.0"
-description = {_toml_str(a.purpose.strip())}
-requires-python = ">=3.12"
-dependencies = [{'"typer>=0.12"' if a.kind == "cli" else ""}]
-
-[dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
-{f'{chr(10)}[project.scripts]{chr(10)}{a.name} = "{a.package}.cli:app"{chr(10)}' if a.kind == "cli" else ""}
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/{a.package}"]
-"""
-    files[f"src/{a.package}/__init__.py"] = f'"""{a.purpose.strip()}"""\n__version__ = "0.1.0"\n'
-    if a.kind == "cli":
-        files[f"src/{a.package}/cli.py"] = f'''import typer
-
-from . import __version__
-
-app = typer.Typer(help={_toml_str(a.purpose.strip())}, no_args_is_help=True)
-
-
-@app.command()
-def version() -> None:
-    """Print the version."""
-    typer.echo(__version__)
-
-
-@app.command()
-def hello(name: str = "world") -> None:
-    """Say hello. Replace with the first real command."""
-    typer.echo(f"hello, {{name}}")
-'''
-        files["tests/test_cli.py"] = f'''from typer.testing import CliRunner
-
-from {a.package}.cli import app
-
-
-def test_version():
-    result = CliRunner().invoke(app, ["version"])
-    assert result.exit_code == 0 and result.stdout.strip() == "0.1.0"
-'''
-    else:
-        files["tests/test_package.py"] = f'''import {a.package}
-
-
-def test_version():
-    assert {a.package}.__version__ == "0.1.0"
-'''
-    files[".gitignore"] = ".venv/\n__pycache__/\n.pytest_cache/\n.ruff_cache/\ndist/\n.ds/site/\n"
-    files[".gitlab-ci.yml"] = f"""# {"ds:inherited [[cicd]]" if "cicd" in {s.id for s in stds} else "ds:local"}
-stages: [check]
-
-test:
-  stage: check
-  image: ghcr.io/astral-sh/uv:python3.12-bookworm
-  script:
-    - uv sync
-    - {a.test_cmd}
-    - {a.lint_cmd}
-
-reconcile:
-  stage: check
-  image: ghcr.io/astral-sh/uv:python3.12-bookworm
-  script:
-    - uvx --from ds-next ds-next reconcile
-  allow_failure: true   # until ds-next is published where the runner can reach it
-"""
+    files.update(canon.render_scaffold(sc.id, {
+        "name": a.name, "package": a.package, "purpose": a.purpose.strip(),
+        "purpose_json": _toml_str(a.purpose.strip()), "test_cmd": a.test_cmd, "lint_cmd": a.lint_cmd}))
     return files
 
 

@@ -1,8 +1,9 @@
 """The terminal: a Claude-Code-style REPL over Agent.
 
-Slash commands that only read the knowledge base run locally and instantly. Everything else is
-a turn with Cortex Code. A skills-os skill name typed as a slash command (/so-capture ...) is
-handed to the agent with an instruction to follow that skill.
+Slash commands that only read the knowledge base run locally and instantly. `/new` is a picker
+and a one-screen form, both local; the model then reviews the draft against the canon, fetches
+the accepted scaffold, and creates the repo. Everything else is a turn with Cortex Code. A
+skills-os skill typed as a slash command (/so-capture ...) is handed to the agent to follow.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import json
 import signal
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -39,20 +41,22 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from . import __version__, docs, reconcile
+from . import __version__, docs, reconcile, scaffold
 from .agent import SERVER, Agent
-from .kb import Canon, Skills, docs_shell_path
+from .kb import Canon, Scaffold, Skills, docs_shell_path
+from .widgets import Field, form, pick
 
 ACCENT = "#d97757"        # the Claude Code orange
 DIM = "grey50"
 COMMANDS = {
-    "/new": "start a project: the agent interviews you, then scaffolds it from the canon",
+    "/new": "start a project from a canon scaffold: /new, /new python, /new python cli <name>",
     "/canon": "list standards, or /canon <id> to read one",
     "/skills": "list skills-os procedures, or /skills <name> to read one",
     "/status": "reconcile this repo against the canon",
     "/docs": "render this repo (or the whole knowledge base) with docs-ds and serve it",
     "/captures": "list drafts waiting to be proposed to the canon",
     "/model": "show or set the Cortex model",
+    "/effort": "show or set thinking effort: minimal, low, medium, high",
     "/clear": "start a fresh session",
     "/help": "this list",
     "/exit": "leave",
@@ -108,9 +112,11 @@ def render(console: Console, msg: Any, state: dict) -> None:
         for b in msg.content:
             if isinstance(b, TextBlock) and b.text.strip():
                 console.print(_bullet(Markdown(b.text.strip())))
-            elif isinstance(b, ThinkingBlock) and b.thinking.strip():
-                console.print(Text(f"✻ {b.thinking.strip().splitlines()[0][:100]}", style=f"italic {DIM}"))
+                state["asked"] = asks(b.text)
+            elif isinstance(b, ThinkingBlock):
+                state["step"] = "Thinking"      # private reasoning stays private, as in Claude Code
             elif isinstance(b, ToolUseBlock):
+                state["step"] = f"Running {_short(b.name)}"
                 state.setdefault("tools", {})[b.id] = b.name
                 head = Text(_short(b.name), style="bold")
                 arg = _arg_summary(b.input)
@@ -120,6 +126,7 @@ def render(console: Console, msg: Any, state: dict) -> None:
     elif isinstance(msg, UserMessage) and isinstance(msg.content, list):
         for b in msg.content:
             if isinstance(b, ToolResultBlock):
+                state["step"] = "Thinking"
                 text = _result_text(b)
                 lines = text.splitlines() or ["(no output)"]
                 more = f" … +{len(lines) - 1} lines" if len(lines) > 1 else ""
@@ -137,6 +144,28 @@ def render(console: Console, msg: Any, state: dict) -> None:
         console.print(Text("  " + " · ".join(parts), style=DIM))
 
 
+def asks(text: str) -> bool:
+    """Whether a reply ends by asking something, even when an example follows the question mark."""
+    tail = text.strip().splitlines()[-3:] if text.strip() else []
+    return any("?" in line for line in tail)
+
+
+def _norm(v: Any) -> Any:
+    if v in (None, "", [], {}):
+        return None
+    return [str(x).strip().lower() for x in v] if isinstance(v, list) else v
+
+
+def changed_keys(draft: dict, args: dict) -> list[str]:
+    keys = (set(draft) | set(args)) - {"scaffold_version"}
+    return sorted(k for k in keys if _norm(draft.get(k)) != _norm(args.get(k)))
+
+
+def same_draft(draft: dict, args: dict) -> bool:
+    """Whether the model is creating exactly what the form submitted (a version number aside)."""
+    return not changed_keys(draft, args)
+
+
 def describe_permission(tool_name: str, inp: dict[str, Any]) -> tuple[str, str]:
     """Cortex sends a kind ("MCP", "Bash", "Write"...) and a resource string. Returns
     (title, detail), naming ds tools by their short name."""
@@ -151,11 +180,26 @@ def describe_permission(tool_name: str, inp: dict[str, Any]) -> tuple[str, str]:
 # ---------------------------------------------------------------- local commands
 
 class SlashCompleter(Completer):
-    def __init__(self, extra: dict[str, str]):
+    """Commands, then for /new the scaffold menu path one word at a time: /new python cli."""
+
+    def __init__(self, extra: dict[str, str], scaffolds: dict[str, Scaffold] | None = None):
         self.items = {**COMMANDS, **extra}
+        self.scaffolds = scaffolds or {}
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
+        if text.startswith("/new "):
+            *done, partial = text[5:].split(" ")
+            seen = set()
+            for sc in self.scaffolds.values():
+                if list(sc.path[:len(done)]) == done and len(sc.path) > len(done):
+                    word = sc.path[len(done)]
+                    if word.startswith(partial) and word not in seen:
+                        seen.add(word)
+                        leaf = len(sc.path) == len(done) + 1
+                        yield Completion(word, start_position=-len(partial),
+                                         display_meta=sc.title if leaf else "…")
+            return
         if not text.startswith("/") or " " in text:
             return
         for cmd, desc in self.items.items():
@@ -164,13 +208,15 @@ class SlashCompleter(Completer):
 
 
 class Repl:
-    def __init__(self, cwd: Path, model: str | None = None, connection: str | None = None):
+    def __init__(self, cwd: Path, model: str | None = None, connection: str | None = None,
+                 effort: str | None = "low"):
         self.cwd = Path(cwd).resolve()
         self.console = Console(highlight=False)
         self.canon = Canon()
         self.skills = Skills()
         self.agent = Agent(self.cwd, ask_permission=self._ask_permission, model=model,
-                           connection=connection, canon=self.canon, skills=self.skills)
+                           connection=connection, effort=effort, canon=self.canon, skills=self.skills)
+        self._draft: dict | None = None     # the /new form's answers, awaiting the model's review
         self.always: set[str] = set()
         self.state: dict = {}
         self._status = None
@@ -180,7 +226,8 @@ class Repl:
         home.mkdir(exist_ok=True)
         self.session = PromptSession(
             history=FileHistory(str(home / "history")),
-            completer=SlashCompleter({f"/{n}": s.description for n, s in self.skills.all.items()}),
+            completer=SlashCompleter({f"/{n}": s.description for n, s in self.skills.all.items()},
+                                     self.canon.scaffolds),
             complete_while_typing=True,
             bottom_toolbar=self._toolbar,
         )
@@ -195,7 +242,8 @@ class Repl:
             Text("  /new to start a project · /help for commands · ctrl-c interrupts", style=DIM),
             Text(""),
             Text(f"  cwd:    {_tilde(self.cwd)}", style=DIM),
-            Text(f"  canon:  {len(self.canon.standards)} standards at {_tilde(self.canon.root)}", style=DIM),
+            Text(f"  canon:  {len(self.canon.standards)} standards, {len(self.canon.scaffolds)} scaffolds "
+                 f"at {_tilde(self.canon.root)}", style=DIM),
             Text(f"  skills: {len(self.skills.all)} from skills-os · docs-ds {shell}", style=DIM),
         )
         self.console.print(Panel(body, border_style=ACCENT, expand=False, padding=(0, 2)))
@@ -208,7 +256,7 @@ class Repl:
     def _toolbar(self):
         where = self._where
         model = self.state.get("model") or self.agent.model or "auto"
-        return HTML(f"  <b>{self.cwd.name}</b> · {where} · model {model} · "
+        return HTML(f"  <b>{self.cwd.name}</b> · {where} · model {model} · effort {self.agent.effort or 'default'} · "
                     f"{'connected' if self.agent.connected else 'idle'}")
 
     # -- permissions
@@ -216,6 +264,18 @@ class Repl:
         title, detail = describe_permission(tool_name, inp)
         if title in self.always:
             return PermissionResultAllow()
+        if title == "scaffold_project" and self._draft:
+            try:
+                args = json.loads(detail)
+            except ValueError:
+                args = {}
+            # submitting the form was the approval, but only for exactly what was submitted
+            if same_draft(self._draft, args):
+                self._draft = None
+                return PermissionResultAllow()
+            detail = "Changed from your form:\n" + "\n".join(
+                f"  {k}: {self._draft.get(k, '')!r} → {args.get(k, '')!r}" for k in changed_keys(self._draft, args)) \
+                + "\n\n" + detail
         if self._status:
             self._status.stop()
         try:
@@ -318,6 +378,104 @@ class Repl:
                                                  (f"http://127.0.0.1:{port}/", f"underline {ACCENT}")),
                                    style="green"))
 
+    def _choose_scaffold(self, words: list[str]) -> tuple[list[Scaffold], list[str]]:
+        """Scaffolds whose menu path starts with the typed words, and the words left over."""
+        matches = list(self.canon.scaffolds.values())
+        used = 0
+        for depth, w in enumerate(words):
+            narrowed = [sc for sc in matches if len(sc.path) > depth and sc.path[depth] == w]
+            if not narrowed:
+                break
+            matches, used = narrowed, depth + 1
+        return [sc for sc in matches if sc.accepted], words[used:]
+
+    async def cmd_new(self, arg: str) -> None:
+        candidates, rest = self._choose_scaffold(arg.split())
+        if not candidates:
+            self.console.print(Text("The canon has no accepted scaffold for that. /new alone lists them.", style="red"))
+            return
+        if len(candidates) == 1:
+            sc = candidates[0]
+        else:
+            chosen = await pick("New project from the canon. Which scaffold?",
+                                [(c.id, " › ".join(c.path), f"{c.title} · v{c.version}") for c in candidates])
+            if chosen is None:
+                self.console.print(Text("  ⎿  cancelled", style=DIM))
+                return
+            sc = self.canon.scaffolds[chosen]
+        self.console.print(_bullet(Text.assemble(("Scaffold ", ""), (sc.id, "bold"), (f" v{sc.version} · {sc.title}", DIM)),
+                                   style="green"))
+        name = rest[0] if rest and scaffold.NAME_RE.match(rest[0]) else ""
+        fields = [
+            Field("name", "name", name, "lowercase-with-dashes; also the folder and the command", True),
+            Field("purpose", "purpose", " ".join(rest[1:]) if name else " ".join(rest),
+                  "one line: what it does and for whom", True),
+            Field("snowflake", "snowflake", "", "DATABASE.SCHEMA it reads or writes; empty for none"),
+            Field("notes", "notes", "", "the one thing future-you should know; optional"),
+            Field("owner", "owner", scaffold._git_user(), "who answers for this repo"),
+            Field("tags", "extra tags", "", f"comma-separated, beyond {', '.join(sc.tags)}"),
+            Field("test_cmd", "test", sc.defaults.get("test_cmd", ""), "from the scaffold"),
+            Field("lint_cmd", "lint", sc.defaults.get("lint_cmd", ""), "from the scaffold"),
+            Field("declines", "declines", "", "standards to decline now, as id: reason; id: reason"),
+        ]
+
+        def answers(v: dict[str, str]) -> scaffold.Answers:
+            declines = {}
+            for part in filter(None, (p.strip() for p in v["declines"].split(";"))):
+                sid, _, why = part.partition(":")
+                declines[sid.strip()] = why.strip()
+            return scaffold.Answers(name=v["name"], purpose=v["purpose"], scaffold=sc.id, owner=v["owner"],
+                                    test_cmd=v["test_cmd"], lint_cmd=v["lint_cmd"], snowflake=v["snowflake"],
+                                    notes=v["notes"], tags=[t for t in v["tags"].split(",") if t.strip()],
+                                    declines=declines)
+
+        def footer(v: dict[str, str]) -> str:
+            tags = list(dict.fromkeys([*sc.tags, *(["snowflake"] if v["snowflake"] else []),
+                                       *(t.strip().lower() for t in v["tags"].split(",") if t.strip())]))
+            n = len(self.canon.applicable(tags))
+            return f"{n} standards apply · tags {', '.join(tags)}"
+
+        def validate(v: dict[str, str]):
+            try:
+                a = answers(v)
+            except ValueError as e:
+                return ("name" if "name" in str(e) else "purpose", str(e))
+            try:
+                scaffold.render(a, self.canon, self.skills)
+            except ValueError as e:
+                return ("declines", str(e))
+            if (self.cwd / a.name).exists():
+                return ("name", f"{a.name}/ already exists here")
+            return None
+
+        v = await form(f"{sc.title} · fill in, check, Enter", fields, footer, validate)
+        if v is None:
+            self.console.print(Text("  ⎿  cancelled", style=DIM))
+            return
+        a = answers(v).resolve(self.canon)
+        draft = {k: val for k, val in {
+            "scaffold": sc.id, "name": a.name, "purpose": a.purpose, "owner": a.owner, "snowflake": a.snowflake,
+            "notes": a.notes, "tags": [t for t in a.tags if t not in sc.tags and t != "snowflake"],
+            "test_cmd": a.test_cmd, "lint_cmd": a.lint_cmd, "declines": a.declines}.items() if val}
+        shown = Text()
+        for k in ("name", "purpose", "snowflake", "notes", "owner", "tags", "declines"):
+            if k in draft:
+                shown.append(f"{k:<10}", style=DIM).append(f"{draft[k]}\n")
+        shown.append(footer(v), style=ACCENT)
+        self.console.print(_bullet(shown))
+        self.console.print()
+        self._draft = draft
+        await self.turn("New project draft from the /new form. Review it against the canon, then fetch the "
+                        f"accepted scaffold and create it, as your instructions say.\n\n{json.dumps(draft, indent=1)}")
+
+    async def cmd_effort(self, arg: str) -> None:
+        if arg:
+            if arg not in ("minimal", "low", "medium", "high", "xhigh", "max"):
+                self.console.print(Text("effort is one of minimal, low, medium, high, xhigh, max", style="red"))
+                return
+            await self.agent.set_effort(arg)
+        self.console.print(Text(f"effort: {self.agent.effort or 'default'}", style=DIM))
+
     async def cmd_model(self, arg: str) -> None:
         if arg:
             await self.agent.set_model(arg)
@@ -341,19 +499,34 @@ class Repl:
             asyncio.ensure_future(self.agent.interrupt())
 
         loop.add_signal_handler(signal.SIGINT, on_sigint)
-        label = "Connecting to Cortex Code…" if not self.agent.connected else "Working…"
-        self._status = self.console.status(f"[{ACCENT}]✻[/] {label} [{DIM}](ctrl-c to interrupt)[/]",
-                                           spinner="dots", spinner_style=ACCENT)
+        self.state["step"] = "Connecting to Cortex Code" if not self.agent.connected else "Thinking"
+        self.state["asked"] = False
+        started = time.monotonic()
+
+        def label() -> str:
+            secs = int(time.monotonic() - started)
+            return f"[{ACCENT}]✻[/] {self.state['step']}… [{DIM}]{secs}s · ctrl-c to interrupt[/]"
+
+        self._status = self.console.status(label(), spinner="dots", spinner_style=ACCENT)
         self._status.start()
+
+        async def tick():
+            while True:
+                await asyncio.sleep(0.5)
+                if self._status:
+                    self._status.update(label())
+
+        ticker = asyncio.ensure_future(tick())
         try:
             async for msg in self.agent.turn(prompt):
-                if self._status:
-                    self._status.update(f"[{ACCENT}]✻[/] Working… [{DIM}](ctrl-c to interrupt)[/]")
                 render(self.console, msg, self.state)
+                if self._status:
+                    self._status.update(label())
         except CortexCodeSDKError as e:
             self.console.print(Text(f"Cortex Code: {e}", style="red"))
             await self.agent.reset()
         finally:
+            ticker.cancel()
             self._status.stop()
             self._status = None
             loop.remove_signal_handler(signal.SIGINT)
@@ -364,6 +537,13 @@ class Repl:
         """Returns False to exit."""
         line = line.strip()
         if not line:
+            if self.state.get("asked"):
+                # Enter on its own keeps what the user already gave; it never accepts an invented value
+                self.console.print(Text("  ⎿  (Enter) keep my answers as they are and continue", style=DIM))
+                await self.turn("Keep my answers exactly as they are and continue. Do not change any value "
+                                "I gave and do not fill in anything I did not give.")
+            else:
+                self.console.print(Text("  Type a message, or / for commands. /new starts a project.", style=DIM))
             return True
         if not line.startswith("/"):
             await self.turn(line)
@@ -372,13 +552,10 @@ class Repl:
         arg = arg.strip()
         if cmd in ("/exit", "/quit"):
             return False
-        if cmd == "/new":
-            await self.turn("I want to start a new project" + (f" named {arg}" if arg else "")
-                            + ". Run the interview.")
-        elif cmd[1:] in self.skills.all:
+        if cmd[1:] in self.skills.all:
             await self.turn(f"Follow the {cmd[1:]} skill: skill_read it first, then do what it says."
                             + (f" Context from me: {arg}" if arg else ""))
-        elif cmd in ("/model", "/clear"):
+        elif cmd in ("/model", "/clear", "/new", "/effort"):
             await getattr(self, f"cmd_{cmd[1:]}")(arg)
         elif cmd in COMMANDS:
             getattr(self, f"cmd_{cmd[1:]}")(arg)
@@ -407,5 +584,5 @@ class Repl:
             await self.agent.close()
 
 
-def main(cwd: Path, model: str | None = None, connection: str | None = None) -> None:
-    asyncio.run(Repl(cwd, model, connection).run())
+def main(cwd: Path, model: str | None = None, connection: str | None = None, effort: str | None = "low") -> None:
+    asyncio.run(Repl(cwd, model, connection, effort).run())
