@@ -519,3 +519,21 @@ def test_docs_never_build_over_a_repo_or_other_files(tmp_path, canon, skills, mo
     docs.build(content, title, fresh, protect=[repo])             # a new directory is fine
     assert ran and (fresh / docs.SITE_MARKER).is_file()
     docs.build(content, title, fresh, protect=[repo])             # and so is rebuilding a ds-next site
+
+
+# -- eighth Codex review, 2026-10-16
+
+def test_docs_copy_linked_images_and_keep_both_homepages(tmp_path, canon, skills):
+    from ds_next import docs
+    scaffold.write(scaffold.Answers(**ANSWERS), tmp_path / "demo-cli", canon, skills, git=False)
+    repo = tmp_path / "demo-cli"
+    (repo / "docs" / "assets").mkdir(parents=True)
+    (repo / "docs" / "assets" / "diagram.svg").write_text("<svg/>")
+    (repo / "docs" / "guide.md").write_text("# Guide\n\n![diagram](assets/diagram.svg) [index](../index.md)\n")
+    (repo / "index.md").write_text("# Repo index page\n\nKeep me. Home is [here](README.md).\n")
+    content, _ = docs.stage(tmp_path / "stage", canon, skills, repo)
+    assert (content / "docs" / "assets" / "diagram.svg").read_text() == "<svg/>"
+    assert "Keep me" in (content / "repo-index.md").read_text()
+    assert "Keep me" not in (content / "index.md").read_text()          # the README is still home
+    assert "[index](../repo-index.md)" in (content / "docs" / "guide.md").read_text()
+    assert "[here](index.md)" in (content / "repo-index.md").read_text()

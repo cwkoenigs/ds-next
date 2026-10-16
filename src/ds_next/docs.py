@@ -18,7 +18,7 @@ from . import reconcile
 from .kb import POINTER_RE, Canon, Skills, canon_path, docs_shell_path
 
 RESERVED = {"standards", "skills"}
-LINK_RE = re.compile(r"\]\(([^)\s#]+\.md)(#[^)\s]*)?\)")
+LINK_RE = re.compile(r"\]\(([^)\s#]+)(#[^)\s]*)?\)")
 
 
 def _page(path: Path, title: str, body: str, position: int | None = None) -> None:
@@ -46,16 +46,32 @@ def _link_pointers(text: str, canon: Canon, prefix: str) -> str:
     return POINTER_RE.sub(sub, text)
 
 
-def _home_links(body: str, rel: str) -> str:
-    """Point links that resolve to the repo's root README.md at index.md, where the home page is
-    staged. A link to any other README (docs/README.md) keeps its target."""
+def _rewrite_links(body: str, rel: str, staged: dict[str, str], repo: Path, docs: Path) -> str:
+    """Make every relative link on the page at `rel` work on the site.
+
+    A link to another page goes to wherever that page was staged (README.md is the home page,
+    so links to it move to index.md, and only links that resolve to the root README do). A link
+    to any other file inside the repo, such as an image, has that file copied next to the
+    staged pages at the same relative path."""
     here = posixpath.dirname(rel)
+    page_dir = posixpath.dirname(staged[rel])
 
     def sub(m):
-        target = m.group(1)
-        if "://" in target or posixpath.normpath(posixpath.join(here, target)) != "README.md":
+        target, anchor = m.group(1), m.group(2) or ""
+        if "://" in target or target.startswith(("/", "mailto:")):
             return m.group(0)
-        return f"]({target[: -len('README.md')]}index.md{m.group(2) or ''})"
+        resolved = posixpath.normpath(posixpath.join(here, target))
+        if resolved.startswith("../"):
+            return m.group(0)                  # outside the repo: not ours to publish
+        if resolved in staged:
+            new = posixpath.relpath(staged[resolved], page_dir or ".")
+            return f"{m.group(0)[:2]}{new}{anchor})"
+        src = repo / resolved
+        if src.is_file() and not src.is_symlink() and repo.resolve() in src.resolve().parents:
+            dst = docs / resolved
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+        return m.group(0)
     return LINK_RE.sub(sub, body)
 
 
@@ -66,20 +82,25 @@ def stage(stage_dir: Path, canon: Canon, skills: Skills, repo: Path | None = Non
     if repo:
         title = repo.name
         # Every Markdown file the repo has, at its own relative path, so the links between them
-        # keep working on the site. README.md becomes the home page, and links to it follow.
-        order = {"README.md": ("index.md", title, 1), "AGENTS.md": ("AGENTS.md", "Agents", 2),
-                 "DECISIONS.md": ("DECISIONS.md", "Decisions", 3)}
-        for f in reconcile._docs(repo):
+        # keep working on the site. README.md becomes the home page; a root index.md the repo
+        # already has moves aside to repo-index.md rather than replacing it.
+        labels = {"README.md": (title, 1), "AGENTS.md": ("Agents", 2), "DECISIONS.md": ("Decisions", 3)}
+        pages = [f for f in reconcile._docs(repo) if f.relative_to(repo).parts[0] not in RESERVED]
+        staged: dict[str, str] = {}
+        for f in pages:
             rel = f.relative_to(repo).as_posix()
-            if rel.split("/")[0] in RESERVED:
-                continue                       # the site's own sections; the repo's copy would collide
+            staged[rel] = "index.md" if rel == "README.md" else ("repo-index.md" if rel == "index.md" else rel)
+        if "README.md" not in staged and "index.md" in staged:
+            staged["index.md"] = "index.md"    # no README: the repo's own index stays the home page
+        for f in pages:
+            rel = f.relative_to(repo).as_posix()
             text = f.read_text(errors="replace")
             heading = text.split("\n", 1)[0][2:].strip() if text.startswith("# ") else ""
             body = text.split("\n", 1)[1] if heading else text
-            target, label, position = order.get(rel, (rel, heading or f.stem.replace("-", " ").capitalize(), None))
-            depth = target.count("/")
-            body = _home_links(body, rel)
-            _page(docs / target, label, _link_pointers(body, canon, "../" * depth), position)
+            label, position = labels.get(rel, (heading or f.stem.replace("-", " ").capitalize(), None))
+            target = staged[rel]
+            body = _rewrite_links(body, rel, staged, repo, docs)
+            _page(docs / target, label, _link_pointers(body, canon, "../" * target.count("/")), position)
     else:
         title = "Knowledge base"
         rows = "\n".join(f"| [{s.id}](standards/{s.id}.md) | {s.title} | v{s.version} | {s.status} |"
