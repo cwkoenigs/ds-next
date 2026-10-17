@@ -157,7 +157,11 @@ try:
     made = work / "made-by-rebuild"
     check("/new creates the repo from a scaffold", (made / "pyproject.toml").is_file() and bool(picked),
           ", ".join(sorted(p.name for p in made.iterdir())) if made.is_dir() else "no folder")
-    log = subprocess.run(["git", "-C", str(made), "log", "--oneline"], capture_output=True, text=True, check=False)
+    for _ in range(30):                          # the files land before the commit does
+        log = subprocess.run(["git", "-C", str(made), "log", "--oneline"], capture_output=True, text=True, check=False)
+        if log.returncode == 0 and log.stdout.strip():
+            break
+        term.read(0.5)
     check("/new commits it", made.is_dir() and log.returncode == 0 and bool(log.stdout.strip()))
     after_submit = term.buf[submitted_at:]
     check("v2: /new involves a Cortex turn", bool(re.search(r"⏺|\d+ turns? ·", after_submit)))
