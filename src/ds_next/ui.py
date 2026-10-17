@@ -44,7 +44,7 @@ from rich.table import Table
 from rich.text import Text
 
 from . import __version__, docs, reconcile, scaffold
-from .agent import SERVER, Agent
+from .agent import SERVER, Agent, TurnStalled
 from .kb import Canon, Scaffold, Skills, docs_shell_path
 from .widgets import Field, form, pick
 
@@ -568,6 +568,8 @@ class Repl:
                 render(self.console, msg, self.state)
                 if self._status:
                     self._status.update(label())
+        except TurnStalled as e:
+            self.console.print(Text(f"  ⎿  {e}", style="yellow"))
         except CortexCodeSDKError as e:
             self.console.print(Text(f"Cortex Code: {e}", style="red"))
             await self.agent.reset()

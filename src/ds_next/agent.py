@@ -281,6 +281,10 @@ Rules:
 {where} Today is {dt.date.today()}."""
 
 
+class TurnStalled(TimeoutError):
+    """Cortex sent nothing for longer than the idle timeout; the turn was interrupted."""
+
+
 PermissionAsk = Callable[[str, dict[str, Any], Any], Awaitable[Any]]
 
 
@@ -300,6 +304,9 @@ class Agent:
         self.session_id: str | None = None
         self._resume: str | None = None
         self.index_summary = ""
+        self.idle_timeout: float | None = 600      # long tool runs are silent too; approvals pause it
+        self._asking = False
+        self._last = 0.0
         self._client: CortexCodeSDKClient | None = None
 
     def options(self) -> CortexCodeAgentOptions:
@@ -327,7 +334,11 @@ class Agent:
             return PermissionResultAllow()
         if self.ask_permission is None:
             return PermissionResultDeny(message="No one is here to approve this call.")
-        return await self.ask_permission(tool_name, inp, ctx)
+        self._asking = True                         # the stall watchdog waits while a person decides
+        try:
+            return await self.ask_permission(tool_name, inp, ctx)
+        finally:
+            self._asking = False
 
     @property
     def connected(self) -> bool:
@@ -348,14 +359,50 @@ class Agent:
             self._client = client
 
     async def turn(self, prompt: str) -> AsyncIterator[Message]:
+        """Messages until the turn's result. A watchdog interrupts a stream silent for longer than
+        idle_timeout, except while a person is answering an approval, and raises TurnStalled;
+        the next turn resumes the same session. [[gotcha-cortex-sdk]] v3"""
         await self.connect()
         assert self._client is not None
-        await self._client.query(prompt)
-        async for msg in self._client.receive_response():
-            sid = getattr(msg, "session_id", None)
-            if sid:
-                self.session_id = sid
-            yield msg
+        loop = asyncio.get_running_loop()
+        me = asyncio.current_task()
+        self._last = loop.time()
+        stalled = False
+        limit = self.idle_timeout
+
+        async def watchdog() -> None:
+            nonlocal stalled
+            while True:
+                await asyncio.sleep(min(limit / 4, 5))
+                if self._asking:
+                    self._last = loop.time()
+                elif loop.time() - self._last > limit:
+                    stalled = True
+                    me.cancel()
+                    return
+
+        dog = asyncio.ensure_future(watchdog()) if limit else None
+        try:
+            await self._client.query(prompt)
+            async for msg in self._client.receive_response():
+                self._last = loop.time()
+                sid = getattr(msg, "session_id", None)
+                if sid:
+                    self.session_id = sid
+                yield msg
+        except asyncio.CancelledError:
+            if not stalled:
+                raise
+            me.uncancel()
+            await self.interrupt()
+            resume = self.session_id
+            await self.close()
+            self._resume = resume
+            raise TurnStalled(f"Cortex sent nothing for {limit:.0f}s, so the turn was interrupted. "
+                              "Ask again to continue the same session.") from None
+        finally:
+            if dog is not None:
+                dog.cancel()
 
     async def set_effort(self, effort: str | None) -> None:
         """Effort is fixed when Cortex starts, so reconnect and resume the same conversation."""

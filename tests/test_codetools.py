@@ -94,3 +94,60 @@ def test_connect_and_close_happen_in_the_callers_task(monkeypatch, tmp_path, can
 
     task = asyncio.run(go())
     assert [t for _, t in seen] == [task, task] and a.index_summary == "graph: indexed"
+
+
+class QuietClient:
+    def __init__(self, options, gate=None):
+        self.events = []
+
+    async def connect(self):
+        self.events.append("connect")
+
+    async def query(self, prompt):
+        pass
+
+    async def receive_response(self):
+        yield type("M", (), {"session_id": "s1"})()
+        await asyncio.sleep(3600)
+
+    async def interrupt(self):
+        self.events.append("interrupt")
+
+    async def disconnect(self):
+        self.events.append("disconnect")
+
+
+def test_a_silent_stream_stalls_but_an_approval_does_not(monkeypatch, tmp_path, canon, skills):
+    monkeypatch.setattr(codetools.shutil, "which", fake_which(set()))
+    made = []
+    monkeypatch.setattr(agent, "CortexCodeSDKClient", lambda o: made.append(QuietClient(o)) or made[-1])
+    a = agent.Agent(tmp_path, canon=canon, skills=skills)
+    a.idle_timeout = 0.2
+
+    async def drain():
+        return [m async for m in a.turn("hi")]
+
+    import pytest
+    with pytest.raises(agent.TurnStalled):
+        asyncio.run(asyncio.wait_for(drain(), 5))
+    assert made[0].events == ["connect", "interrupt", "disconnect"] and a.options().resume == "s1"
+
+    async def slow_person(name, inp, ctx):
+        await asyncio.sleep(0.6)
+        return "allowed"
+
+    b = agent.Agent(tmp_path, ask_permission=slow_person, canon=canon, skills=skills)
+    b.idle_timeout = 0.2
+
+    class Asks(QuietClient):
+        async def receive_response(self):
+            yield type("M", (), {"session_id": "s1"})()
+            await b._permit("Bash", {"resource": "ls"}, None)
+            yield type("M", (), {"session_id": "s1"})()
+
+    monkeypatch.setattr(agent, "CortexCodeSDKClient", lambda o: Asks(o))
+
+    async def drain_b():
+        return [m async for m in b.turn("hi")]
+
+    assert len(asyncio.run(asyncio.wait_for(drain_b(), 5))) == 2

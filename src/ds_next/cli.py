@@ -155,7 +155,7 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
     """One turn through Cortex Code, printed the way the terminal prints it."""
     from cortex_agent_sdk.cortexcode import PermissionResultAllow, PermissionResultDeny
 
-    from .agent import Agent
+    from .agent import Agent, TurnStalled
     from .ui import describe_permission, render
 
     if prompt.startswith("@"):
@@ -177,6 +177,9 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
         try:
             async for msg in agent.turn(prompt):
                 render(out, msg, state)
+        except TurnStalled as e:
+            out.print(f"  ⎿  {e}", style="yellow")
+            raise typer.Exit(3) from None
         finally:
             await agent.close()
 
