@@ -122,6 +122,9 @@ parameters. Nobody edited them.
 **Conclusions:**
 - **"Canon makes agents produce better code" failed on these tasks.** The judge didn't probe what
   canon guards against, and Haiku handled everything the judge did probe.
+- **The tasks were too simple.** Without canon, Haiku passed 100% of the judge's tests: a ceiling,
+  so these tasks could not show whether canon helps. The next test needs tasks hard enough that the
+  no-canon build fails a meaningful share of an independent judge's tests.
 - **What survives:** agents reliably reuse the team's code when it exists.
 
 ### 4.4 In progress when this was written
@@ -151,7 +154,8 @@ The same honest test, for the **function library over MCP**: the `code` conditio
 
 1. **What exactly should be proven first?** Correctness, judged independently, has failed on easy
    tasks. Candidates:
-   - harder tasks where an independent judge would catch real failures;
+   - harder tasks, where the no-canon build fails a meaningful share of an independent judge's
+     tests (today's were too simple: 100% without canon);
    - convergence as library coverage grows (run at 0%, half and full coverage, then measure each
      repo's own code size and similarity across builds);
    - a claim about consistency and maintenance across repos.
