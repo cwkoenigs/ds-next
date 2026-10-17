@@ -1,0 +1,39 @@
+{
+ "condition": "with",
+ "run": 2,
+ "repo": "/var/folders/4w/hj7w8g4s42ggqnzrp6jvs4fr0000gn/T/rebuild-with-2-Sxdl/rb-with-2",
+ "build_seconds": 559,
+ "turns": 52,
+ "behaviour_passed": 21,
+ "behaviour_total": 23,
+ "failed": [
+  "/new creates the repo from a scaffold",
+  "/new commits it"
+ ],
+ "blocks_used": [
+  "block-approver",
+  "block-claude-render",
+  "block-confined-write",
+  "block-cortex-session",
+  "block-git-hooks",
+  "block-scaffold-render",
+  "block-text-safety",
+  "block-tui-widgets"
+ ],
+ "gotchas_read": [
+  "gotcha-agent-trust",
+  "gotcha-approvals",
+  "gotcha-confined-writes",
+  "gotcha-cortex-sdk",
+  "gotcha-generated-text",
+  "gotcha-git-hooks",
+  "gotcha-terminal-ui",
+  "gotcha-validation",
+  "gotcha-verify-process"
+ ],
+ "graph_calls": 0,
+ "lsp_calls": 0,
+ "src_lines": 1256,
+ "capped": false,
+ "stalled": false
+}

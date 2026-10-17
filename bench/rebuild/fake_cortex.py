@@ -5,6 +5,7 @@ replies, so acceptance never spends a Cortex request and scores the same every r
 Point an app at it with CORTEX_CODE_CLI_PATH. What it does, by the prompt it gets:
   "Reply with the single word ok"    -> ok
   a shell command ("echo …")         -> asks to run it (Bash), prints its output when allowed
+  "Read the file <path>"             -> asks to Read it (kind Read, absolute path), quotes line 1
   "Without using any tools … question" -> a plain-text question
   a review of a draft                -> reads a standard, then gives a verdict: it objects to a
                                         draft that mentions passwords, approves anything else.
@@ -16,6 +17,7 @@ Cortex does: kind "MCP" with the tool name on the first line of `resource`."""
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -92,6 +94,12 @@ def use(name: str, args: dict, permission: tuple[str, dict]) -> tuple[bool, str]
                        "permission_suggestions": []})
     if verdict.get("behavior") != "allow":
         text, ok = "ERROR: " + (verdict.get("message") or "denied by the user"), False
+    elif kind == "Read":
+        try:
+            with open(args["file_path"]) as f:
+                text, ok = f.read(), True
+        except OSError as e:
+            text, ok = f"ERROR: {e}", False
     elif kind == "Bash":
         r = subprocess.run(args["command"], shell=True, capture_output=True, text=True, timeout=60, check=False)
         text, ok = (r.stdout + r.stderr).strip(), r.returncode == 0
@@ -163,6 +171,11 @@ def turn(prompt: str) -> str:
         return "Which colour do you like best?"
     if re.search(r"\breview\b", prompt, re.IGNORECASE) and re.search(r"draft|scaffold|project", prompt, re.IGNORECASE):
         return review(prompt)
+    r = re.search(r"read the file (\S+?)[.,]?(?:\s|$)", prompt, re.IGNORECASE)
+    if r:
+        path = os.path.abspath(r.group(1))
+        ok, text = use("Read", {"file_path": path}, ("Read", {"action": "read", "resource": path}))
+        return f"Its first line is: {text.splitlines()[0] if ok and text else '(could not read it)'}"
     m = re.search(r"(echo\s+[\w.-]+)", prompt)
     if m and re.search(r"shell|command|run", prompt, re.IGNORECASE):
         cmd = m.group(1)

@@ -1,0 +1,43 @@
+{
+ "condition": "with",
+ "run": 3,
+ "repo": "/var/folders/4w/hj7w8g4s42ggqnzrp6jvs4fr0000gn/T/rebuild-with-3-V2Uk/rb-with-3",
+ "build_seconds": 559,
+ "turns": 40,
+ "behaviour_passed": 18,
+ "behaviour_total": 23,
+ "failed": [
+  "ruff clean",
+  "a shell command asks first",
+  "then runs after approval",
+  "/new creates the repo from a scaffold",
+  "/new commits it"
+ ],
+ "blocks_used": [
+  "block-approver",
+  "block-claude-render",
+  "block-confined-write",
+  "block-cortex-session",
+  "block-git-hooks",
+  "block-markdown-pointers",
+  "block-scaffold-render",
+  "block-text-safety",
+  "block-tui-widgets"
+ ],
+ "gotchas_read": [
+  "gotcha-agent-trust",
+  "gotcha-approvals",
+  "gotcha-confined-writes",
+  "gotcha-cortex-sdk",
+  "gotcha-generated-text",
+  "gotcha-git-hooks",
+  "gotcha-terminal-ui",
+  "gotcha-validation",
+  "gotcha-verify-process"
+ ],
+ "graph_calls": 0,
+ "lsp_calls": 0,
+ "src_lines": 1333,
+ "capped": true,
+ "stalled": false
+}

@@ -1,0 +1,25 @@
+PASS  uv sync  
+PASS  tests pass  58 passed in 4.25s
+PASS  ruff clean  All checks passed!
+PASS  ds-next reconcile: no errors  rb-with-1: 25 adopted, 0 declined, 0 pending, 0 errors
+PASS  uses the UI blocks  blocks: block-approver, block-claude-render, block-confined-write, block-cortex-session, block-git-hooks, block-scaffold-render, block-tui-widgets
+PASS  gotcha: no allowed_tools allowlist  
+PASS  gotcha: no ensure_ascii=True  
+PASS  launches to a prompt  
+PASS  welcome counts the canon  
+PASS  /help lists the commands  
+PASS  /canon lists standards  
+PASS  /canon <id> prints it  
+PASS  /blocks lists blocks  
+PASS  unknown command says so  
+PASS  a shell command asks first  
+PASS  then runs after approval  
+PASS  /new creates the repo from a scaffold  .git, .gitignore, .gitlab-ci.yml, pyproject.toml, src, tests
+PASS  /new commits it  
+PASS  v2: /new involves a Cortex turn  
+PASS  /exit leaves  
+PASS  v2: /exit exits cleanly  status 0
+PASS  v2: no traceback in the session  
+transcript: /var/folders/4w/hj7w8g4s42ggqnzrp6jvs4fr0000gn/T/accept-hf1mr5lr/transcript.txt
+
+22/22 checks passed

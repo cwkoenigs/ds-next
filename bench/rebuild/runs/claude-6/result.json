@@ -1,0 +1,20 @@
+{
+ "builder": "claude-subagent",
+ "run": 6,
+ "repo": "/var/folders/4w/hj7w8g4s42ggqnzrp6jvs4fr0000gn/T/rebuild-claude-6-qRQC/rb-claude-6",
+ "seconds": 736,
+ "behaviour_passed": 23,
+ "behaviour_total": 23,
+ "failed": [],
+ "blocks_used": [
+  "block-approver",
+  "block-claude-render",
+  "block-confined-write",
+  "block-cortex-session",
+  "block-git-hooks",
+  "block-scaffold-render",
+  "block-text-safety",
+  "block-tui-widgets"
+ ],
+ "src_lines": 1566
+}

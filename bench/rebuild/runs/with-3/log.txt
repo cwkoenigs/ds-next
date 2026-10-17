@@ -1,0 +1,14 @@
+09:28:22 probe
+⏺ ok                                                                            
+  1 turn · 14.4s
+09:28:40 create rb-with-3 against /Users/clarkkoenigs/Developer/canon
+⏺ scaffold_get(python-cli)
+  ⎿  { … +24 lines
+⏺ scaffold_project(rb-with-3)
+  ⎿  created /private/var/folders/4w/hj7w8g4s42ggqnzrp6jvs4fr0000gn/T/rebuild-with-3-V2Uk/rb-with-3 from  … +13 lines
+⏺ Project rb-with-3 created from python-cli v2 — 25 standards adopted, all files
+  scaffolded, ready to go.                                                      
+  3 turns · 74.1s
+09:29:58 build
+09:39:17 accept (full canon)
+10:06:53 done

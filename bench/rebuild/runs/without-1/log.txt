@@ -1,0 +1,12 @@
+07:06:22 probe
+⏺ ok                                                                            
+  1 turn · 3.2s
+07:06:31 create rb-without-1 against /var/folders/4w/hj7w8g4s42ggqnzrp6jvs4fr0000gn/T//rebuild-without-1-OIht/canon
+⏺ scaffold_get(python-cli)
+  ⎿  { … +24 lines
+⏺ scaffold_project(rb-without-1)
+  ⎿  created /private/var/folders/4w/hj7w8g4s42ggqnzrp6jvs4fr0000gn/T/rebuild-without-1-OIht/rb-without-1 … +13 lines
+⏺ Project rb-without-1 created from python-cli v2 — 16 standards adopted, all   
+  files in place.                                                               
+  3 turns · 18.9s
+07:06:53 build
