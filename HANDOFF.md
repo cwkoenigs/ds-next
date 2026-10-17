@@ -127,15 +127,25 @@ parameters. Nobody edited them.
   no-canon build fails a meaningful share of an independent judge's tests.
 - **What survives:** agents reliably reuse the team's code when it exists.
 
-### 4.4 In progress when this was written
+### 4.4 The function library, by the same honest test
 
-The same honest test, for the **function library over MCP**: the `code` condition in
-`bench/judge/run.sh`.
-- It includes the gotchas and standards through `canon_list` and `canon_read`, and code through
-  `code_search`, `code_get` and `code_add`. canon's files are unreadable.
-- 9 builds were running. Results land in `bench/judge/runs/<task>-code-<n>/result.json`.
-- The owner raised the option of testing the function library *without* the gotchas, to isolate
-  "pulling code" from "reading lessons". That isn't run yet.
+The `code` condition in `bench/judge/run.sh`: lessons through `canon_list` and `canon_read`, and
+code through `code_search`, `code_get` and `code_add`, over MCP, with canon's files unreadable.
+Haiku, 3 runs per task.
+
+| | Judge tests passed | Pulled library code | Mean cost per build |
+|---|---|---|---|
+| Without canon | 252/252 (100%) | 0/9 | $0.029 |
+| With canon, as a package | 246/252 (98%) | 9/9 | $0.065 |
+| **With canon, function library** | **247/252 (98%)** | **9/9** | **$0.042** |
+
+- **The same picture:** no gain on the judge's tests, and it lost the same points (stage's safety
+  rule, the nested-folder case).
+- **About a third cheaper than the package,** because the agent reads one function at a time.
+- **Less convergence than the package:** the three builds of a task pulled *different* sets of
+  functions (stamp: 7, 4 and 8 symbols). With the package, every build imported the identical set.
+- **Not run yet:** the function library without the gotchas, which would isolate "pulling code"
+  from "reading lessons".
 
 ## 5. Where it stands
 
@@ -146,7 +156,8 @@ The same honest test, for the **function library over MCP**: the `code` conditio
 - **Not proven:**
   - That canon makes code more correct, judged independently.
   - That builds converge as the library grows (plug and play).
-- **The cost:** canon roughly doubles build cost on small tasks, from reading lessons and code.
+- **The cost:** canon raises build cost on small tasks: about 2.2× as a package, 1.4× as a
+  function library.
 - **Every test so far used toy tasks.** Small tests can't show anything about a real codebase, and
   choices made on small cases, like the Python-only code parser, may not hold up.
 
