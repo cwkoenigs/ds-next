@@ -188,3 +188,19 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
 
 if __name__ == "__main__":
     sys.exit(app())
+
+
+@app.command()
+def mcp() -> None:
+    """Serve the knowledge-base tools over stdio MCP, for any MCP client (the same tools Cortex gets)."""
+    from mcp.server.stdio import stdio_server
+
+    from .agent import SERVER, create_sdk_mcp_server, tools
+
+    server = create_sdk_mcp_server(SERVER, tools=tools(Canon(), Skills(), Path.cwd()))["instance"]
+
+    async def serve() -> None:
+        async with stdio_server() as (read, write):
+            await server.run(read, write, server.create_initialization_options())
+
+    asyncio.run(serve())
