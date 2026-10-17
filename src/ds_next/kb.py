@@ -162,7 +162,9 @@ class Canon:
                                   s.get("status", ""), dict(s.get("defaults", {})), s["dir"], tuple(s["files"]),
                                   s.get("hash", ""))
                 for s in data.get("scaffolds", [])}
-        return {"standards": self._standards, "scaffolds": self._scaffolds, "blocks": self._blocks}
+            self._code = {s["id"]: s for s in data.get("code", [])}
+        return {"standards": self._standards, "scaffolds": self._scaffolds, "blocks": self._blocks,
+                "code": self._code}
 
     @property
     def standards(self) -> dict[str, Standard]:
@@ -175,6 +177,11 @@ class Canon:
     @property
     def blocks(self) -> dict[str, Block]:
         return self._index()["blocks"]
+
+    @property
+    def code(self) -> dict[str, dict]:
+        """Every function, class and constant in the blocks, by "<block>:<name>" (index.json "code")."""
+        return self._index()["code"]
 
     def block_about(self, bid: str) -> str:
         return _front_matter((self.root / self.blocks[bid].dir / "BLOCK.md").read_text())[1]

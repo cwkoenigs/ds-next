@@ -24,12 +24,14 @@ from cortex_agent_sdk.cortexcode import (
     tool,
 )
 
+from . import code as code_mod
 from . import codetools, reconcile, scaffold
 from .kb import Canon, Skills
 
 SERVER = "ds"
 READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status",
-             "scaffold_list", "scaffold_get", "block_list", "block_get", "snowflake_search")
+             "scaffold_list", "scaffold_get", "block_list", "block_get", "snowflake_search",
+             "code_search", "code_get")
 WRITES = ("scaffold_project", "capture")
 READ_ONLY_IDS = {f"mcp__{SERVER}__{t}" for t in READ_ONLY}
 
@@ -181,6 +183,44 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
                      f"requirements added: {', '.join(done['requires']) or '-'} (run uv sync)"
                      + (f"\nadd by hand, no one-line list found: {', '.join(done['manual'])}" if done["manual"] else ""))
 
+    @tool("code_search", "Search the canon's accepted code, one function, class or constant at a time, by "
+          "what it does (e.g. 'user text into TOML', 'empty an output folder safely'). Returns ids, "
+          "signatures and the lessons each carries. Search before writing code.", {"query": str})
+    async def code_search(args):
+        hits = code_mod.search(canon, args.get("query", ""))
+        code_mod.usage_log("code_search", [h["id"] for h in hits])
+        return _text("\n".join(f"{h['id']}  {h['signature']}\n    {h['summary'] or '-'}  "
+                               f"[lessons: {', '.join(h['lessons']) or '-'}; {h['lines']} lines]" for h in hits)
+                     or "nothing matches; try other words, or block_list")
+
+    @tool("code_get", "Read one code symbol by id (block:name): its source with only what it needs, and "
+          "the tests that cover it.", {"id": str})
+    async def code_get(args):
+        try:
+            text = code_mod.get(canon, args["id"])
+        except (ValueError, KeyError) as e:
+            return _text(str(e), error=True)
+        code_mod.usage_log("code_get", [args["id"]])
+        return _text(text)
+
+    @tool("code_add", "Add code symbols to the repo at the working directory: ids is a comma-separated "
+          "list of block:name. Copies each block's module cut down to them (and what they need) into "
+          "src/<package>/, with the tests that cover them, and records them in the manifest. Import "
+          "them from your code; never edit the copy.", {"ids": str})
+    async def code_add(args):
+        repo = reconcile.find_repo(cwd)
+        if repo is None:
+            return _text(f"{cwd} is not a ds repo; create one with /new first", error=True)
+        ids = [i.strip() for i in args.get("ids", "").split(",") if i.strip()]
+        try:
+            done = code_mod.add(repo, ids, canon)
+        except (ValueError, FileExistsError, KeyError) as e:
+            return _text(f"not added: {e}", error=True)
+        return _text("\n".join(
+            f"{d['note']}: {d['block']} {d['symbols'] if d['symbols'] == 'all' else ', '.join(d['symbols'])}\n"
+            f"  files: {', '.join(d['files']) or '-'}; requirements added: {', '.join(d.get('requires', [])) or '-'}"
+            + (f"\n  add by hand: {', '.join(d['manual'])}" if d.get("manual") else "") for d in done))
+
     @tool("snowflake_search", "Search Snowflake: kind 'docs' (product documentation), 'object' (tables, "
           "views, schemas... in this account's catalog) or 'table-details' (columns, joins, usage for "
           "named tables). Read-only.", {"kind": str, "query": str})
@@ -224,7 +264,8 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
                      f"(the so-capture skill does it), then run scripts/build_index.py.")
 
     return [canon_list, canon_read, skills_list, skill_read, project_status, scaffold_list, scaffold_get,
-            scaffold_project, block_list, block_get, block_add, snowflake_search, capture]
+            scaffold_project, block_list, block_get, block_add, code_search, code_get, code_add,
+            snowflake_search, capture]
 
 
 def code_tools(cwd: Path) -> str:
@@ -270,8 +311,9 @@ Rules:
 - If the user asks for a project in chat instead, propose a complete draft in one message
   (scaffold, name, purpose, and suggested values for the rest), ask for one confirmation, and
   create it the same way. Never ask one question at a time. Never write project files yourself.
-- Before writing code, block_list for accepted code that already does it, and block_add it rather
-  than writing your own; import it from the package. Before building anything, read the gotchas
+- Before writing code, code_search for accepted code that already does it (one function at a
+  time), code_get to read it, and code_add it rather than writing your own; import it from the
+  package. block_add takes a whole block when you need most of it. Before building anything, read the gotchas
   (canon_list marks them) whose tags match the work: they are mistakes already made here once.
 - When a skill fits the request, skill_read it and follow it.
 {code_tools(cwd)}
