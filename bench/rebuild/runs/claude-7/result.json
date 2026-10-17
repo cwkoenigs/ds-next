@@ -1,0 +1,27 @@
+{
+ "builder": "claude-subagent",
+ "run": 7,
+ "repo": "/var/folders/4w/hj7w8g4s42ggqnzrp6jvs4fr0000gn/T/rebuild-claude-7-9QsA/rb-claude-7",
+ "seconds": 529,
+ "behaviour_passed": 19,
+ "behaviour_total": 24,
+ "failed": [
+  "/new creates the repo from a scaffold",
+  "/new commits it",
+  "v4: reading a project file does not ask",
+  "/exit leaves",
+  "v2: /exit exits cleanly"
+ ],
+ "blocks_used": [
+  "block-approver",
+  "block-canon-reader",
+  "block-claude-render",
+  "block-confined-write",
+  "block-cortex-session",
+  "block-git-hooks",
+  "block-scaffold-render",
+  "block-text-safety",
+  "block-tui-widgets"
+ ],
+ "src_lines": 1584
+}

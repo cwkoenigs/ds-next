@@ -1,0 +1,1 @@
+{"mcpServers": {"ds": {"type": "stdio", "command": "/Users/clarkkoenigs/Developer/ds-next/bench/rebuild/../../.venv/bin/ds-next", "args": ["mcp"], "env": {"DS_CANON": "/Users/clarkkoenigs/Developer/canon"}}}}

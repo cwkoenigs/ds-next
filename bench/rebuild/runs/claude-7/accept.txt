@@ -1,0 +1,28 @@
+PASS  uv sync  
+PASS  tests pass  106 passed in 4.57s
+PASS  ruff clean  All checks passed!
+PASS  ds-next reconcile: no errors  rb-claude-7: 25 adopted, 0 declined, 0 pending, 0 errors
+PASS  uses the UI blocks  blocks: block-approver, block-canon-reader, block-claude-render, block-confined-write, block-cortex-session, block-git-hooks, block-scaffold-render, block-text-safety, block-tui-widgets
+PASS  gotcha: no allowed_tools allowlist  
+PASS  gotcha: no ensure_ascii=True  
+PASS  launches to a prompt  
+PASS  welcome counts the canon  
+PASS  /help lists the commands  
+PASS  /canon lists standards  
+PASS  /canon <id> prints it  
+PASS  /blocks lists blocks  
+PASS  unknown command says so  
+PASS  a shell command asks first  
+PASS  then runs after approval  
+FAIL  /new creates the repo from a scaffold  no folder
+FAIL  /new commits it  
+PASS  v2: /new involves a Cortex turn  
+PASS  v3: empty Enter after a question is reported truthfully  ›
+PASS  v3: /new refuses a draft its review objects to  
+FAIL  v4: reading a project file does not ask  
+FAIL  /exit leaves  
+FAIL  v2: /exit exits cleanly  status None
+PASS  v2: no traceback in the session  
+transcript: /var/folders/4w/hj7w8g4s42ggqnzrp6jvs4fr0000gn/T/accept-ss8efjuq/transcript.txt
+
+20/25 checks passed
