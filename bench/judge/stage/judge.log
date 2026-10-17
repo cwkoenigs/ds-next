@@ -1,0 +1,21 @@
+Permission deny rule (--disallowed-tools): Glob(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Read(path) rules are. Use Read(//Users/clarkkoenigs/Developer/**) instead (Read rules cover all file-reading tools).
+Permission deny rule (--disallowed-tools): Write(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Edit(path) rules are. Use Edit(//Users/clarkkoenigs/Developer/**) instead (Edit rules cover all file-editing tools).
+I wrote `test_judge.py` in the current directory but haven't run it. It has 20 test functions, which come to 22 cases because two are parametrized. Every test calls `$TARGET_BIN <repo> --out <out>` through subprocess and works only inside `tmp_path`. None of them need git.
+
+**What the tests check:**
+- **Copying:** every `.md` file lands at the same relative path with its content unchanged, and the source files are left alone.
+- **Skipped folders:** `.git`, `node_modules` and `.venv` are skipped wherever they appear, including nested ones like `web/node_modules`. `.github/` is still copied, because the ticket names only those three folders.
+- **Renaming:** `README.md` becomes `index.md`. A top-level `index.md` becomes `repo-index.md`, and links between the two pages point the right way after the rename. That case catches a fix that just runs one find-and-replace after another.
+- **Link rewriting:** links to `README.md` are fixed from subfolders, including ones with an `#anchor` or a `"title"`. Reference-style links (`[h]: ../README.md`) are fixed too.
+- **Links still work:** a general check reads every relative link in the output and confirms it leads to a real file inside `<out>`. It doesn't care what a nested `docs/README.md` ends up being called, as long as links to it work.
+- **Links left alone:** `https:`, `mailto:` and `#section` links come through unchanged.
+- **Linked files:** images and files the pages link to are copied byte for byte, from the top level and from subfolders. Files nothing links to (`.env`, `.py`, unused images) are not copied.
+- **Safety:**
+  - A link that points outside the repo (`../secret.txt`, `../../../../etc/hosts`) must not cause anything to be written outside `<out>`.
+  - Broken links must not crash the command.
+  - If `--out` is the repo itself or a folder above it, the command must refuse with a one-line error and leave the repo intact.
+  - If `--out` is inside the repo, a second run must not copy the output into itself (`site/site/...`), or it must stop with a one-line error.
+- **Output folder:** old files are cleared, including nested ones and non-Markdown files. Running again on the same `<out>` works and picks up deleted or changed pages. A missing `<out>` is created along with its parent folders, and relative paths are read from the current directory.
+- **Errors:** a repo that doesn't exist, or is a file, gives exactly one line of output, a non-zero exit and no Python traceback. Leaving out `--out` exits non-zero without a traceback; I didn't require one line there, since argument parsers usually print a usage line as well.
+
+Where the ticket is unclear, I accept either reasonable behaviour: broken links can produce a warning or a one-line error, and `--out` inside the repo can be handled or refused. No test depends on the wording of messages.

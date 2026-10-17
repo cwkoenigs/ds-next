@@ -1,0 +1,27 @@
+Permission deny rule (--disallowed-tools): Glob(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Read(path) rules are. Use Read(//Users/clarkkoenigs/Developer/**) instead (Read rules cover all file-reading tools).
+Permission deny rule (--disallowed-tools): Write(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Edit(path) rules are. Use Edit(//Users/clarkkoenigs/Developer/**) instead (Edit rules cover all file-editing tools).
+I wrote `test_judge.py` in the working directory but couldn't run it, so it hasn't been checked against any implementation. It has 19 test functions; three are parametrized, so pytest will collect about 33 cases. All of them call `$TARGET_BIN` with subprocess and work inside `tmp_path`. Git gets its identity from a `GIT_CONFIG_GLOBAL` file written per test, with system config turned off.
+
+**What the tests check:**
+- **Generated files:** each test reads the files the way their real consumers would, instead of matching text.
+  - `pyproject.toml` is parsed with `tomllib` to check name, description and `authors == [{name = owner}]`.
+  - The `__init__.py` docstring is read with `ast`, and in one test by actually importing the package.
+  - `README.md` must start with `# <name>`, a blank line, then the purpose.
+  - `.gitlab-ci.yml` is parsed as YAML: `test.script == [check]`, defaulting to `uv run pytest -q`. `PURPOSE` may be set at the top level or on the job.
+  - A package name with several dashes (`my-cool-tool2-x9`) must become `src/my_cool_tool2_x9`.
+- **Escaping:** purpose and owner values with quotes, `:`, `#`, braces, `$`, backticks, `"""`, `'''`, backslashes (including one at the very end) and Unicode must come back exactly in every file. YAML values that would otherwise be read as non-text (`yes`, `1.0`, `null`, `*alias`, `!tag`, `- dash`, `key: value # …`) must still load as strings.
+- **Git:** the target must be its own repo, with all four files committed and a clean working tree. If the target sits inside another repo, that outer repo's HEAD, index and hooks must be untouched.
+- **Pre-push hook:** it must exist and be executable. Using a real bare remote:
+  - A passing check lets the push through. That check contains quotes, runs from the repo root and writes a marker file.
+  - Checks ending in `exit 3` or `true && test -f missing` must block the push, and the remote must stay empty.
+  - The check must not run while `stamp` creates the project.
+- **Error handling:**
+  - Invalid names (uppercase, `_`, space, empty, `.`, `../escape`, non-ASCII, `/`) must fail and create nothing.
+  - A missing `--name`, `--purpose` or `--owner` must fail and create nothing.
+  - Running against a non-empty existing directory must fail without overwriting anything, and so must a second run on the same target.
+  - A relative target must be resolved against the current directory.
+
+**Things to be aware of:**
+- The YAML checks use PyYAML and skip if it isn't installed. If it's missing, about a third of the tests skip silently instead of failing.
+- Some expectations go beyond what the ticket says outright: refusing a non-empty target, validating the name before creating anything, and not running the check while creating the project. They're what a careful reviewer would expect, but an implementer could reasonably argue about them.
+- I left out cases the ticket leaves open: an existing empty target directory, purposes containing newlines, and making a commit when git has no identity configured.

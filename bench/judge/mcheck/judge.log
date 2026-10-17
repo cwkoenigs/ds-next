@@ -1,0 +1,34 @@
+Permission deny rule (--disallowed-tools): Glob(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Read(path) rules are. Use Read(//Users/clarkkoenigs/Developer/**) instead (Read rules cover all file-reading tools).
+Permission deny rule (--disallowed-tools): Write(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Edit(path) rules are. Use Edit(//Users/clarkkoenigs/Developer/**) instead (Edit rules cover all file-editing tools).
+I wrote `test_judge.py` in the current directory. It has 18 test functions, and with parametrization they expand to 29 cases. I couldn't run anything, so none of these have been run against an implementation, and I didn't check the file with ruff either.
+
+All tests call `$TARGET_BIN` through subprocess, use only `tmp_path`, and don't need git. If `TARGET_BIN` isn't set, they skip rather than fail.
+
+**What they check:**
+- **Exit codes:**
+  - A clean manifest gives exit 0 and no output.
+  - Only PENDING lines gives exit 1.
+  - Any ERROR gives exit 2, including a mix of ERROR and PENDING.
+- **PENDING:** a standard adopted at an older version, declined at an older version, or in the index but not in the manifest.
+- **Manifest ERRORs:**
+  - An id that isn't in the index.
+  - A version that never existed: above the current one, 0, or negative. This is checked for both adopted and declined standards.
+  - A missing or badly typed field in an adopted table. The bad types are `version` as a string, as a float, or as `true`. That last one catches the common Python mistake where a bool passes as an int.
+  - A missing `version`, `reason` or `revisit` in a declined table.
+  - None of these may crash with a traceback.
+- **Unreadable files:** a missing manifest or broken TOML gives `ERROR manifest:`. A missing index or invalid JSON gives `ERROR index:`. Both exit 2.
+- **Sorting:** the ERROR and PENDING lines across several ids must come out in sorted order.
+- **`--docs`:**
+  - Valid pointers pass: `[[id]]`, `[[id@1]]` and `[[id@current]]`.
+  - An unknown id or a version that never existed gives an ERROR naming the file and the pointer.
+  - `.md` files in nested subfolders are checked, and non-`.md` files are ignored.
+  - Docs aren't checked unless `--docs` is given.
+  - A doc error combined with a PENDING line gives exit 2.
+
+**Choices I made where the ticket is unclear:**
+- I read "a version that never existed" as anything outside 1 to the current version.
+- Valid dates are written as native TOML dates.
+- For doc errors, the tests only require that the line starts with `ERROR `, names the file and contains the pointer. They don't check whether the path is relative or absolute.
+- Only ERROR and PENDING lines from stdout count. Nothing depends on the wording after `<id>:`.
+
+**What I left out because the ticket doesn't define it:** an id that appears in both adopted and declined, an index entry that's malformed but still valid JSON, and a `--docs` folder that doesn't exist.
