@@ -1,0 +1,15 @@
+{
+ "task": "stage",
+ "passed": 22,
+ "total": 22,
+ "failed": [],
+ "canon_lib": [],
+ "cond": "without",
+ "run": 3,
+ "model": "haiku",
+ "seconds": 177,
+ "cost_usd": 0.03746175000000001,
+ "turns": 20,
+ "code_add": [],
+ "own_lines": 154
+}

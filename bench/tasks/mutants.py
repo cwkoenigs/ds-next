@@ -62,6 +62,26 @@ MUTANTS = {
          ["refuses the repo itself as output", "refuses the home directory", "refuses a non-empty folder it did not create"]),
         ("skip list ignored", [("        if set(rel.parts) & SKIP or", "        if")], ["skips .git, node_modules and .venv"]),
     ],
+    "publish": [
+        ("unknown pointer loses its pin", [
+            ('errors.append(f"ERROR {src_rel}: {m.group(0)} is not in the catalogue")',
+             'errors.append(f"ERROR {src_rel}: [[{sid}]] is not in the catalogue")')], []),
+        ("pointers inside code are pointers", [("        if not is_code:\n", "        if True:\n")], []),
+        ("datetime accepted as a date", [("not isinstance(v, datetime)", "True")], []),
+        ("bool accepted as an int", [("isinstance(v, int) and not isinstance(v, bool)", "isinstance(v, (int, float))")], []),
+        ("publishes despite errors", [('    if any(ln.startswith("ERROR") for ln in lines):\n        return 2\n',
+                                       '    has_error = any(ln.startswith("ERROR") for ln in lines)\n')], []),
+        ("link titles break rewriting", [
+            ('((?:\\s+(?:\\"[^\\"]*\\"|\'[^\']*\'|\\([^)]*\\)))?\\s*\\))")', '(\\))")')], []),
+        ("reference-style links not rewritten", [("            seg = REFDEF.sub(fix_ref, seg)\n", "")], []),
+        ("assets not copied", [("    for rel in sorted(assets):\n", "    for rel in []:\n")], []),
+        ("stale pages linger", [("    if out.exists():\n        shutil.rmtree(out)\n    out.mkdir(parents=True)\n",
+                                 "    out.mkdir(parents=True, exist_ok=True)\n")], []),
+        ("PENDING exits 0", [("    return 1 if lines else 0\n", "    return 0\n")], []),
+        ("publish.json pages unsorted", [('"pages": sorted(rendered)', '"pages": sorted(rendered, reverse=True)')], []),
+        ("README links from subfolders not rewritten", [
+            ('        if resolved in where:\n', '        if resolved in where and "/" not in src_rel:\n')], []),
+    ],
 }
 
 
@@ -69,6 +89,8 @@ def main() -> None:
     work = Path(sys.argv[1])
     bad = []
     for task, mutants in MUTANTS.items():
+        if not (HERE / task / "check.py").exists():
+            continue
         src = (HERE / "ref" / f"{task}.py").read_text()
         for i, (label, edits, expect) in enumerate(mutants):
             text = src
@@ -81,8 +103,8 @@ def main() -> None:
             repo = work / f"{task}-m{i}"
             subprocess.run([str(HERE / "ref" / "make_ref.sh"), task, str(mod), str(repo)], check=True,
                            capture_output=True)
-            out = subprocess.run([PY, str(HERE / task / "check.py"), str(repo)], capture_output=True, text=True).stdout
-            failed = set(re.findall(r"^FAIL  (.+?)  ", out, re.M))
+            out = subprocess.run([PY, str(HERE / task / "check.py"), str(repo)], capture_output=True, text=True, check=False).stdout
+            failed = set(re.findall(r"^FAIL  (.+?)  ", out, re.MULTILINE))
             missed = [e for e in expect if e not in failed]
             print(f"{'ok  ' if not missed else 'MISS'} {task}: {label} -> fails {sorted(failed)}")
             if missed:

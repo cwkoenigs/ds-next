@@ -49,23 +49,57 @@ def _text(s: str, error: bool = False) -> dict[str, Any]:
     return out
 
 
+def _arg(args: dict, *names: str) -> str:
+    """The first argument present under any of these names. Models mix up `id`, `name`, `ids` and
+    `query` across tools; taking the aliases costs nothing and saves a failed turn."""
+    for n in names:
+        v = args.get(n)
+        if v not in (None, "", [], {}):
+            return v if isinstance(v, (str, list)) else str(v)
+    return ""
+
+
+def _schema(**props: str) -> dict:
+    """A JSON schema with optional string properties: {name: description}."""
+    return {"type": "object", "properties": {k: {"type": "string", "description": d} for k, d in props.items()},
+            "required": []}
+
+
+def parse_ids(raw: object) -> list[str]:
+    """Symbol ids from a tool argument: a comma-separated string, a JSON list, or a list."""
+    if isinstance(raw, list):
+        return [str(i).strip() for i in raw if str(i).strip()]
+    text = str(raw or "").strip()
+    if text.startswith("["):
+        try:
+            return parse_ids(json.loads(text))
+        except ValueError:
+            text = text.strip("[]")
+    return [i.strip().strip("\"'") for i in text.split(",") if i.strip().strip("\"'")]
+
+
 def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None) -> list:
     # (scaffold id, version, template hash) the model has fetched this session; scaffold_project
     # accepts only one of these, so the code always comes from a scaffold the model looked at
     fetched: set[tuple[str, int, str]] = set()
 
-    @tool("canon_list", "List the canon standards that apply to a set of repo tags "
-          "(comma-separated, e.g. 'python,cli'). Empty tags lists every standard.", {"tags": str})
+    @tool("canon_list", "List the canon standards and gotchas. Optional tags (comma-separated, e.g. "
+          "'python,cli') keep only those that apply; no tags lists everything.",
+          _schema(tags="comma-separated repo tags; omit to list every standard"))
     async def canon_list(args):
-        tags = [t.strip() for t in args.get("tags", "").split(",") if t.strip()]
+        tags = [t.strip() for t in str(_arg(args, "tags")).split(",") if t.strip()]
         stds = canon.applicable(tags) if tags else sorted(canon.standards.values(), key=lambda s: s.id)
         return _text("\n".join(f"{s.id} v{s.version}{' (gotcha)' if s.kind == 'gotcha' else ''} "
                                f"[{', '.join(s.applies_to)}] {s.title}" for s in stds))
 
-    @tool("canon_read", "Read one standard's full text by id.", {"id": str})
+    @tool("canon_read", "Read one standard or gotcha in full, by id (as canon_list prints it).",
+          _schema(id="the standard's id, e.g. gotcha-validation", name="alias of id", standard="alias of id"))
     async def canon_read(args):
+        sid = str(_arg(args, "id", "name", "standard", "tags")).strip().strip("[]\"'")
+        if not sid:
+            return _text("pass id: the standard's id, as canon_list prints it", error=True)
         try:
-            return _text(canon.read(args["id"]))
+            return _text(canon.read(sid))
         except KeyError as e:
             return _text(str(e), error=True)
 
@@ -193,25 +227,37 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
                                f"[lessons: {', '.join(h['lessons']) or '-'}; {h['lines']} lines]" for h in hits)
                      or "nothing matches; try other words, or block_list")
 
-    @tool("code_get", "Read one code symbol by id (block:name): its source with only what it needs, and "
-          "the tests that cover it.", {"id": str})
+    @tool("code_get", "Read one code symbol by id (block:name, as code_search prints it): its source with "
+          "only what it needs, and the tests that cover it.",
+          _schema(id="block:name", name="alias of id", query="words to search instead, if you have no id"))
     async def code_get(args):
+        sid = str(_arg(args, "id", "name")).strip()
+        if not sid:
+            query = str(_arg(args, "query"))
+            if not query:
+                return _text("pass id (block:name), or query to search", error=True)
+            hits = code_mod.search(canon, query)
+            return _text("no id given; code_search found:\n" + "\n".join(f"{h['id']}  {h['signature']}" for h in hits)
+                         if hits else "no id given and nothing matches the query", error=not hits)
         try:
-            text = code_mod.get(canon, args["id"])
+            text = code_mod.get(canon, sid)
         except (ValueError, KeyError) as e:
-            return _text(str(e), error=True)
-        code_mod.usage_log("code_get", [args["id"]])
+            return _text(f"{e}; code_search finds ids", error=True)
+        code_mod.usage_log("code_get", [sid])
         return _text(text)
 
     @tool("code_add", "Add code symbols to the repo at the working directory: ids is a comma-separated "
           "list of block:name. Copies each block's module cut down to them (and what they need) into "
           "src/<package>/, with the tests that cover them, and records them in the manifest. Import "
-          "them from your code; never edit the copy.", {"ids": str})
+          "them from your code; never edit the copy.",
+          _schema(ids="comma-separated block:name ids", id="alias of ids", name="alias of ids", symbols="alias of ids"))
     async def code_add(args):
         repo = reconcile.find_repo(cwd)
         if repo is None:
             return _text(f"{cwd} is not a ds repo; create one with /new first", error=True)
-        ids = [i.strip() for i in args.get("ids", "").split(",") if i.strip()]
+        ids = parse_ids(_arg(args, "ids", "id", "name", "symbols"))
+        if not ids:
+            return _text("pass ids: comma-separated block:name, as code_search prints them", error=True)
         try:
             done = code_mod.add(repo, ids, canon)
         except (ValueError, FileExistsError, KeyError) as e:

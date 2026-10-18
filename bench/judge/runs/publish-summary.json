@@ -1,0 +1,94 @@
+[
+ {
+  "arm": "without",
+  "n": 3,
+  "pass_median": 100.0,
+  "pass_min": 96.49122807017544,
+  "pass_max": 100.0,
+  "used_canon": "0/3",
+  "own_lines_median": 426,
+  "cost_median": 0.2073254,
+  "cost_min": 0.061287749999999995,
+  "cost_max": 0.2695980600000001,
+  "turns_median": 29,
+  "own_code_similarity": 0.10050835960364746,
+  "pulled_jaccard": 1.0,
+  "failed_tests": [
+   "test_page_renaming_rules",
+   "test_relative_links_between_pages_are_rewritten"
+  ]
+ },
+ {
+  "arm": "lessons",
+  "n": 3,
+  "pass_median": 96.49122807017544,
+  "pass_min": 96.49122807017544,
+  "pass_max": 96.49122807017544,
+  "used_canon": "0/3",
+  "own_lines_median": 446,
+  "cost_median": 0.4940179500000001,
+  "cost_min": 0.43622254000000005,
+  "cost_max": 0.60634057,
+  "turns_median": 74,
+  "own_code_similarity": 0.06687918656889899,
+  "pulled_jaccard": 1.0,
+  "failed_tests": [
+   "test_page_renaming_rules",
+   "test_relative_links_between_pages_are_rewritten"
+  ]
+ },
+ {
+  "arm": "lib",
+  "n": 3,
+  "pass_median": 100.0,
+  "pass_min": 100.0,
+  "pass_max": 100.0,
+  "used_canon": "3/3",
+  "own_lines_median": 277,
+  "cost_median": 0.10122298999999998,
+  "cost_min": 0.06029920000000001,
+  "cost_max": 0.24133427999999998,
+  "turns_median": 37,
+  "own_code_similarity": 0.0866907270301932,
+  "pulled_jaccard": 0.8333333333333334,
+  "failed_tests": []
+ },
+ {
+  "arm": "both",
+  "n": 3,
+  "pass_median": 96.49122807017544,
+  "pass_min": 96.49122807017544,
+  "pass_max": 96.49122807017544,
+  "used_canon": "3/3",
+  "own_lines_median": 317,
+  "cost_median": 0.30360820000000005,
+  "cost_min": 0.19408415,
+  "cost_max": 0.5846505599999999,
+  "turns_median": 65,
+  "own_code_similarity": 0.07575014406477604,
+  "pulled_jaccard": 0.8333333333333334,
+  "failed_tests": [
+   "test_page_renaming_rules",
+   "test_relative_links_between_pages_are_rewritten"
+  ]
+ },
+ {
+  "arm": "code",
+  "n": 3,
+  "pass_median": 100.0,
+  "pass_min": 96.49122807017544,
+  "pass_max": 100.0,
+  "used_canon": "3/3",
+  "own_lines_median": 280,
+  "cost_median": 0.19975169000000004,
+  "cost_min": 0.15952032000000002,
+  "cost_max": 0.21878778,
+  "turns_median": 64,
+  "own_code_similarity": 0.11768683392173607,
+  "pulled_jaccard": 0.8333333333333334,
+  "failed_tests": [
+   "test_page_renaming_rules",
+   "test_relative_links_between_pages_are_rewritten"
+  ]
+ }
+]

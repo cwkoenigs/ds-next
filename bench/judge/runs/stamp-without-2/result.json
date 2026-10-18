@@ -1,0 +1,15 @@
+{
+ "task": "stamp",
+ "passed": 35,
+ "total": 35,
+ "failed": [],
+ "canon_lib": [],
+ "cond": "without",
+ "run": 2,
+ "model": "haiku",
+ "seconds": 80,
+ "cost_usd": 0.018801849999999995,
+ "turns": 18,
+ "code_add": [],
+ "own_lines": 72
+}

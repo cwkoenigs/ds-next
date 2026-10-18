@@ -1,0 +1,19 @@
+{
+ "task": "publish",
+ "passed": 57,
+ "total": 57,
+ "failed": [],
+ "canon_lib": [],
+ "code_add": [
+  "block-confined-write",
+  "block-markdown-pointers",
+  "block-safe-outdir"
+ ],
+ "own_lines": 286,
+ "cond": "code",
+ "run": 3,
+ "model": "haiku",
+ "seconds": 290,
+ "cost_usd": 0.15952032000000002,
+ "turns": 76
+}

@@ -1,23 +1,48 @@
 #!/bin/sh
-# One build for the honest test. Usage: run.sh <task> <with|without> <run> [model]
-# Both start from `uv init --package`. "with" also gets a copy of the canon beside the repo: its
-# lessons (gotchas and standards) and canon-lib. Nothing else differs. ~/Developer is unreadable to
-# the builder (the judge's tests, my checks, the references). Scored by the blind judge's tests.
+# One build for the honest test. Usage: run.sh <task> <without|lessons|lib|both|code> <run> [model]
+# Every arm starts from the same `uv init --package` repo and the same ticket; only the knowledge differs.
+#   without  nothing but the ticket
+#   lessons  the canon's gotchas and standards, copied beside the repo (no code)
+#   lib      canon-lib, the accepted code as one package, copied beside the repo (no lessons)
+#   both     lessons + lib  ("with" in the first round)
+#   code     the function library over MCP: code_search/code_get/code_add, plus canon_list/canon_read
+# ~/Developer is unreadable to the builder (the judge's tests, my checks, the references).
+# Scored by the blind judge's tests (score.py).
 set -eu
 TASK="$1"; COND="$2"; N="$3"; MODEL="${4:-haiku}"
+[ "$COND" = with ] && COND=both
 HERE="$(cd "$(dirname "$0")" && pwd)"; DEV="$HOME/Developer"; CANON="${DS_CANON:-$DEV/canon}"
 OUT="$HERE/runs/$TASK-$COND-$N"; rm -rf "$OUT"; mkdir -p "$OUT"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/honest-$TASK-$COND-$N-XXXX")"; REPO="$WORK/$TASK"
 (cd "$WORK" && uv init -q --package --name "$TASK" "$TASK" >/dev/null && cd "$TASK" && uv add -q --dev pytest ruff >/dev/null)
-KB=""; ADD=""
-if [ "$COND" = with ]; then
-  mkdir -p "$WORK/canon"
-  cp -R "$CANON/gotchas" "$WORK/canon/"; cp "$CANON"/*.md "$WORK/canon/"
-  [ -d "$CANON/adr" ] && cp -R "$CANON/adr" "$WORK/canon/"
-  rsync -a --exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .ruff_cache "$CANON/lib" "$WORK/canon/"
-  KB="Your team's knowledge base is at $WORK/canon. It has lessons: gotchas/*.md are mistakes already made once and the rules that prevent them; the other *.md files are standards. And it has canon-lib (lib/), the team's accepted, tested code: add it with \`uv add --editable $WORK/canon/lib\` and import from canon_lib instead of writing that code yourself (lib/src/canon_lib/__init__.py lists the modules). Read the lessons that apply before you start."
-  ADD="--add-dir $WORK/canon"
-fi
+KB=""; ADD=""; MCPCFG='{"mcpServers": {}}'; ALLOW=""
+LESSONS="It has lessons: gotchas/*.md are mistakes already made once and the rules that prevent them; the other *.md files are standards. Read the lessons that apply before you start."
+LIB="It has canon-lib (lib/), the team's accepted, tested code: add it with \`uv add --editable $WORK/canon/lib\` and import from canon_lib instead of writing that code yourself (lib/src/canon_lib/__init__.py lists the modules)."
+case "$COND" in
+  lessons|lib|both)
+    mkdir -p "$WORK/canon"
+    if [ "$COND" != lib ]; then
+      cp -R "$CANON/gotchas" "$WORK/canon/"; cp "$CANON"/*.md "$WORK/canon/"
+      [ -d "$CANON/adr" ] && cp -R "$CANON/adr" "$WORK/canon/"
+    fi
+    if [ "$COND" != lessons ]; then
+      rsync -a --exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .ruff_cache "$CANON/lib" "$WORK/canon/"
+    fi
+    case "$COND" in
+      lessons) KB="Your team's knowledge base is at $WORK/canon. $LESSONS" ;;
+      lib)     KB="Your team's knowledge base is at $WORK/canon. $LIB" ;;
+      both)    KB="Your team's knowledge base is at $WORK/canon. $LESSONS $LIB" ;;
+    esac
+    ADD="--add-dir $WORK/canon" ;;
+  code)
+    mkdir -p "$REPO/.ds"; printf '[repo]\nname = "%s"\ntags = ["python", "cli"]\n' "$TASK" > "$REPO/.ds/manifest.toml"
+    MCPCFG="$(printf '{"mcpServers": {"ds": {"type": "stdio", "command": "%s", "args": ["mcp"], "env": {"DS_CANON": "%s"}}}}' \
+      "$HERE/../../.venv/bin/ds-next" "$CANON")"
+    KB="Your team's knowledge base is reachable through the \`ds\` MCP tools. code_search finds the team's accepted, tested functions by what they do; code_get reads one, with only what it needs and its tests; code_add copies them into this repo (import them from your package instead of writing that code yourself). canon_list and canon_read give the team's lessons: gotchas are mistakes already made once, and the rules that prevent them. Search and read the lessons that apply before you start."
+    ALLOW="mcp__ds__code_search mcp__ds__code_get mcp__ds__code_add mcp__ds__canon_list mcp__ds__canon_read" ;;
+  without) ;;
+  *) echo "unknown condition $COND" >&2; exit 2 ;;
+esac
 echo "$REPO" > "$OUT/repo.txt"
 PROMPT="You are building a small Python command from a ticket, in the repository you are in. Work only inside it.
 $KB
@@ -31,8 +56,8 @@ When you finish, reply with what you built and the final output of \`uv run pyte
 START=$(date +%s)
 # shellcheck disable=SC2086
 (cd "$REPO" && claude -p "$PROMPT" --model "$MODEL" --output-format stream-json --verbose $ADD \
-  --strict-mcp-config --mcp-config '{"mcpServers": {}}' --setting-sources project \
-  --allowedTools Read Write Edit Glob Grep TodoWrite "Bash(uv:*)" "Bash(git:*)" \
+  --strict-mcp-config --mcp-config "$MCPCFG" --setting-sources project \
+  --allowedTools $ALLOW Read Write Edit Glob Grep TodoWrite "Bash(uv:*)" "Bash(git:*)" \
   --disallowedTools "Read(/$DEV/**)" "Grep(/$DEV/**)" "Glob(/$DEV/**)" "Edit(/$DEV/**)" "Write(/$DEV/**)" \
                     WebFetch WebSearch Task Agent \
   < /dev/null > "$OUT/build.jsonl" 2>&1) || true

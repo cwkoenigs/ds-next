@@ -1,0 +1,18 @@
+{
+ "task": "publish",
+ "passed": 55,
+ "total": 57,
+ "failed": [
+  "test_page_renaming_rules",
+  "test_relative_links_between_pages_are_rewritten"
+ ],
+ "canon_lib": [],
+ "code_add": [],
+ "own_lines": 431,
+ "cond": "lessons",
+ "run": 3,
+ "model": "haiku",
+ "seconds": 544,
+ "cost_usd": 0.60634057,
+ "turns": 104
+}

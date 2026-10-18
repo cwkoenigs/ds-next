@@ -1,0 +1,22 @@
+{
+ "task": "publish",
+ "passed": 55,
+ "total": 57,
+ "failed": [
+  "test_page_renaming_rules",
+  "test_relative_links_between_pages_are_rewritten"
+ ],
+ "canon_lib": [
+  "confined",
+  "outdir",
+  "pointers"
+ ],
+ "code_add": [],
+ "own_lines": 323,
+ "cond": "both",
+ "run": 1,
+ "model": "haiku",
+ "seconds": 497,
+ "cost_usd": 0.5846505599999999,
+ "turns": 86
+}

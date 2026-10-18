@@ -1,0 +1,19 @@
+{
+ "task": "mcheck",
+ "passed": 26,
+ "total": 27,
+ "failed": [
+  "test_docs_nested_md_found_and_non_md_ignored"
+ ],
+ "canon_lib": [],
+ "cond": "code",
+ "run": 3,
+ "model": "haiku",
+ "seconds": 145,
+ "cost_usd": 0.04140887000000001,
+ "turns": 46,
+ "code_add": [
+  "block-markdown-pointers"
+ ],
+ "own_lines": 131
+}

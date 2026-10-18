@@ -1,0 +1,19 @@
+{
+ "task": "stamp",
+ "passed": 35,
+ "total": 35,
+ "failed": [],
+ "canon_lib": [
+  "confined",
+  "githooks",
+  "textsafe"
+ ],
+ "cond": "with",
+ "run": 2,
+ "model": "haiku",
+ "seconds": 228,
+ "cost_usd": 0.12906354,
+ "turns": 66,
+ "code_add": [],
+ "own_lines": 94
+}

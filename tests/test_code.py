@@ -181,3 +181,14 @@ def test_add_never_overwrites_a_file_it_did_not_write(repo, lib_canon):
 def test_get_shows_one_symbol_with_its_needs_and_tests(lib_canon):
     text = code.get(lib_canon, "block-lib:to_literal")
     assert "def to_literal" in text and "def _clean" in text and "def words" not in text and "def test_literal" in text
+
+
+def test_parse_ids_accepts_the_shapes_models_send():
+    from ds_next.agent import parse_ids
+
+    want = ["block-a:x", "block-b:y"]
+    assert parse_ids("block-a:x, block-b:y") == want
+    assert parse_ids('["block-a:x", "block-b:y"]') == want
+    assert parse_ids(["block-a:x", "block-b:y"]) == want
+    assert parse_ids("[block-a:x, block-b:y]") == want
+    assert parse_ids("") == []

@@ -1,0 +1,40 @@
+Permission deny rule (--disallowed-tools): Glob(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Read(path) rules are. Use Read(//Users/clarkkoenigs/Developer/**) instead (Read rules cover all file-reading tools).
+Permission deny rule (--disallowed-tools): Write(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Edit(path) rules are. Use Edit(//Users/clarkkoenigs/Developer/**) instead (Edit rules cover all file-editing tools).
+I wrote `test_judge.py` in the working directory. I haven't run it, because I can't run anything here. It contains 39 test functions, which become about 60 cases once the parametrized variants are counted. Every test calls `$TARGET_BIN` through subprocess and keeps all its files under `tmp_path`. None of them need git.
+
+**What it covers:**
+- **Exit codes and output:**
+  - 0 when clean, 1 when anything is PENDING (and it still publishes), 2 on any ERROR.
+  - `ERROR`/`PENDING` lines are checked only by their prefix (`ERROR <id>: `) and must come out sorted.
+  - On ERROR, nothing is written under `<out>`, and output from an earlier run is left exactly as it was.
+- **Manifest and index checks:**
+  - Unknown id; versions that are the wrong type (string, float, bool).
+  - Each required field missing in turn.
+  - A version above the catalogue's latest, for both adopted and declined.
+  - A manifest or index that is missing, malformed or a duplicate key gives `ERROR manifest` / `ERROR index`.
+  - PENDING when an adopted or declined version is older, when a standard isn't mentioned, and for an empty manifest.
+- **Pages:**
+  - README.md becomes index.md, a top-level index.md becomes repo-index.md, a nested README becomes its folder's index.md, and a nested index.md keeps its name.
+  - `.git`, `node_modules` and `.venv` are skipped, even when they contain bad pointers.
+  - Non-ASCII page text and file names; a repo with no pages.
+- **Links:**
+  - Each rewritten link is followed from the output page to check that it lands on the right file and keeps its anchor. This covers `..`, nested folders, and links to renamed README/index pages.
+  - External, `mailto:` and anchor-only links stay as they are.
+  - Linked images and files (png, svg via `../`, pdf, jpg) are copied byte for byte.
+- **Pointers:**
+  - Exact output format for `[[id]]` and `[[id@N]]`, and the counts in `publish.json`.
+  - Pointers inside inline code and inside ``` or ~~~ fences are left alone and not counted.
+  - Bad pointers give `ERROR <repo-relative page path>: ` with the pointer text in the line.
+- **Re-runs and paths:**
+  - A second run gives byte-identical output.
+  - Removed pages disappear from the output, including index.md when README.md is deleted.
+  - Relative arguments, with `--out` in nested folders that don't exist yet.
+  - The repo name comes from the folder name when the repo is given as `.`, with a trailing slash, or as `../x`.
+- **Other failures:** `--out` pointing at a regular file must fail with one stderr line and no traceback. A missing repo and missing arguments must fail without a traceback.
+
+**Interpretations the ticket doesn't spell out, which could fail a reasonable implementation:**
+- `ERROR`/`PENDING` lines are read from stdout only, since the ticket says "print" and keeps stderr for other failures.
+- `[[id@N]]` counts towards `pointers[id]`.
+- Versions are assumed to run from 1 up to the catalogue's number, so only versions above it are treated as "never existed". Version 0 isn't tested.
+- In `publish.json`, `pages` lists only `.md` files, not copied images or other assets.
+- An error-free run against an existing `<out>` still writes the new output. Only an ERROR run must leave the previous output untouched.

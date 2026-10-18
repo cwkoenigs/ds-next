@@ -1,0 +1,50 @@
+[
+ {
+  "arm": "without",
+  "n": 3,
+  "pass_median": 100.0,
+  "pass_min": 100.0,
+  "pass_max": 100.0,
+  "used_canon": "0/3",
+  "own_lines_median": 89,
+  "cost_median": 0.018801849999999995,
+  "cost_min": 0.016682580000000002,
+  "cost_max": 0.0385496,
+  "turns_median": 22,
+  "own_code_similarity": 0.31261461054843087,
+  "pulled_jaccard": 1.0,
+  "failed_tests": []
+ },
+ {
+  "arm": "with",
+  "n": 3,
+  "pass_median": 100.0,
+  "pass_min": 100.0,
+  "pass_max": 100.0,
+  "used_canon": "3/3",
+  "own_lines_median": 99,
+  "cost_median": 0.0438508,
+  "cost_min": 0.03842712000000001,
+  "cost_max": 0.12906354,
+  "turns_median": 37,
+  "own_code_similarity": 0.3391587247873524,
+  "pulled_jaccard": 1.0,
+  "failed_tests": []
+ },
+ {
+  "arm": "code",
+  "n": 3,
+  "pass_median": 100.0,
+  "pass_min": 100.0,
+  "pass_max": 100.0,
+  "used_canon": "3/3",
+  "own_lines_median": 88,
+  "cost_median": 0.03933086999999998,
+  "cost_min": 0.03289603,
+  "cost_max": 0.040823960000000006,
+  "turns_median": 45,
+  "own_code_similarity": 0.2038746764839661,
+  "pulled_jaccard": 0.7777777777777778,
+  "failed_tests": []
+ }
+]

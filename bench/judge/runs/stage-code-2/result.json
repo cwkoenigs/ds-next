@@ -1,0 +1,20 @@
+{
+ "task": "stage",
+ "passed": 21,
+ "total": 22,
+ "failed": [
+  "test_clears_stale_output"
+ ],
+ "canon_lib": [],
+ "cond": "code",
+ "run": 2,
+ "model": "haiku",
+ "seconds": 166,
+ "cost_usd": 0.048413059999999994,
+ "turns": 53,
+ "code_add": [
+  "block-confined-write",
+  "block-safe-outdir"
+ ],
+ "own_lines": 146
+}
