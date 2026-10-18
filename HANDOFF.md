@@ -1,5 +1,7 @@
 # Handoff: the team knowledge system (canon, ds-next)
 
+The result and the decision are in [REPORT.md](REPORT.md). This file is the full record, in order, with the mistakes.
+
 State on 2026-10-17. Everything is local: nothing has been pushed. canon's work is on its `lessons`
 branch (its `main` is untouched); ds-next has only `main`.
 
