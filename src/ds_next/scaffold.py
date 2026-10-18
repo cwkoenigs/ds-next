@@ -8,6 +8,7 @@ provenance comments say which.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import keyword
 import re
 import shlex
@@ -120,6 +121,13 @@ def render(a: Answers, canon: Canon, skills: Skills, today: dt.date | None = Non
     local = f"<!-- ds:local interview {today} -->"
     adopted = [s for s in stds if s.id not in a.declines]
     files: dict[str, str] = {}
+    # the accepted code: a new repo starts on canon-lib when the canon ships it
+    lib = canon.root / "lib"
+    has_lib = (lib / "pyproject.toml").is_file()
+    try:
+        index_stamp = str(json.loads((canon.root / "index.json").read_text()).get("generated", ""))
+    except (OSError, ValueError):
+        index_stamp = ""
 
     snow = f"\nIt reads and writes Snowflake in `{a.snowflake}`.\n" if a.snowflake else ""
     files["README.md"] = f"""# {a.name}
@@ -148,6 +156,7 @@ uv sync
 - Test: `{a.test_cmd}`
 - Lint: `{a.lint_cmd}`
 - Before changing anything, read `.ds/manifest.toml`: it says which standards are in force here.
+{f"- Accepted code: `canon-lib` is a dependency of this repo. Its modules are listed in `{lib / 'src' / 'canon_lib' / '__init__.py'}`; import from it before writing code of your own, and never copy or edit it here.{chr(10)}" if has_lib else ""}- The team's knowledge base is served by `ds-next mcp` (canon_list, canon_read, code_search, code_get, code_add) for any agent that can reach it.
 - Query the code graph before reading files, and check a symbol's references with the LSP tools
   before changing it (ds-next registers both when they are installed).
 
@@ -171,7 +180,11 @@ None yet.
              f"tags = [{', '.join(_toml_str(t) for t in a.tags)}]",
              f'created = "{today}"', 'interview = ".ds/interview.md"',
              f'scaffold = "{sc.id}"', f"scaffold_version = {sc.version}",
-             f'ds_version = "{__version__}"', ""]
+             f'ds_version = "{__version__}"', f"canon = {_toml_str(str(canon.root))}",
+             f"canon_index = {_toml_str(index_stamp)}"]
+    if has_lib:
+        lines.append(f"canon_lib = {_toml_str(str(lib))}")
+    lines.append("")
     revisit = today + dt.timedelta(days=90)
     for s in stds:
         lines += [f"[standards.{s.id}]"]
@@ -191,7 +204,10 @@ None yet.
     files.update(canon.render_scaffold(sc.id, {
         "name": a.name, "package": a.package, "purpose": a.purpose.strip(),
         "purpose_json": json_str(a.purpose.strip()), "test_cmd": a.test_cmd, "lint_cmd": a.lint_cmd,
-        "test_cmd_json": json_str(a.test_cmd), "lint_cmd_json": json_str(a.lint_cmd)}))
+        "test_cmd_json": json_str(a.test_cmd), "lint_cmd_json": json_str(a.lint_cmd),
+        "canon_lib_dep": '"canon-lib"' if has_lib else "",
+        "canon_lib_source": (f"\n[tool.uv.sources]\ncanon-lib = {{ path = {json_str(str(lib))}, editable = true }}\n"
+                             if has_lib else "")}))
     return files
 
 

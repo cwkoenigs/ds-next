@@ -129,3 +129,16 @@ def test_stale_block_is_reported_even_when_the_manifest_is_broken(tmp_path, cano
     r = reconcile.check(repo, newer)
     assert any("tags" in e for e in r.errors)
     assert r.pending == ["block-demo v2 (block; this repo has v1)"]
+
+
+def test_new_repo_starts_on_canon_lib_when_the_canon_ships_it(tmp_path, canon, skills):
+    a = scaffold.Answers(**ANSWERS)
+    files = scaffold.render(a, canon, skills)
+    assert "canon_lib" not in files[".ds/manifest.toml"] and "canon-lib" not in files["AGENTS.md"]
+    (canon.root / "lib").mkdir()
+    (canon.root / "lib" / "pyproject.toml").write_text('[project]\nname = "canon-lib"\n')
+    files = scaffold.render(a, canon, skills)
+    manifest = files[".ds/manifest.toml"]
+    assert f'canon_lib = "{canon.root / "lib"}"' in manifest and f'canon = "{canon.root}"' in manifest
+    assert "canon_index = " in manifest
+    assert "`canon-lib` is a dependency" in files["AGENTS.md"]
