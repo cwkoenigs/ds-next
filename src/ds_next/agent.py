@@ -223,7 +223,7 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
     async def code_search(args):
         hits = code_mod.search(canon, args.get("query", ""))
         code_mod.usage_log("code_search", [h["id"] for h in hits])
-        return _text("\n".join(f"{h['id']}  {h['signature']}\n    {h['summary'] or '-'}  "
+        return _text("\n".join(f"{h['id']}{code_mod.label(h['status'])}  {h['signature']}\n    {h['summary'] or '-'}  "
                                f"[lessons: {', '.join(h['lessons']) or '-'}; {h['lines']} lines]" for h in hits)
                      or "nothing matches; try other words, or block_list")
 

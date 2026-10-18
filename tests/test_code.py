@@ -86,7 +86,7 @@ def lib_canon(canon):
                         ["_clean"]),
                     sym("words", "function", "def words(s: str) -> list[str]", "Lowercase words in s.", ["SEP", "_WORD"]),
                     sym("where", "function", "def where(p: str) -> Path", "A path.", []),
-                    sym("shout", "function", "def shout(s)", "Quote loudly.", [], status="proposed", block="block-draft")]
+                    sym("shout", "function", "def shout(s)", "Quote loudly.", [], status="retired", block="block-draft")]
     (canon.root / "index.json").write_text(json.dumps(data))
     return Canon(canon.root)
 
@@ -98,10 +98,10 @@ def repo(tmp_path, lib_canon, skills):
     return tmp_path / "demo-cli"
 
 
-def test_search_ranks_by_what_code_does_and_skips_unaccepted(lib_canon):
+def test_search_ranks_by_what_code_does_and_skips_unserved(lib_canon):
     hits = code.search(lib_canon, "quote text as a literal")
     assert hits[0]["id"] == "block-lib:to_literal"
-    assert all(h["status"] == "accepted" for h in hits)
+    assert all(h["status"] != "retired" for h in hits)  # proposed is served; retired is not
     assert code.search(lib_canon, "the a of") == []
 
 
@@ -167,7 +167,7 @@ def test_add_leaves_a_whole_block_alone_and_refuses_bad_ids(repo, lib_canon):
     assert code.add(repo, ["block-lib:words"], lib_canon)[0]["note"] == "the repo already has the whole block"
     with pytest.raises(ValueError, match="no code symbol"):
         code.add(repo, ["block-lib:nope"], lib_canon)
-    with pytest.raises(ValueError, match="not accepted"):
+    with pytest.raises(ValueError, match="not served"):
         code.add(repo, ["block-draft:shout"], lib_canon)
 
 
@@ -192,3 +192,11 @@ def test_parse_ids_accepts_the_shapes_models_send():
     assert parse_ids(["block-a:x", "block-b:y"]) == want
     assert parse_ids("[block-a:x, block-b:y]") == want
     assert parse_ids("") == []
+
+
+def test_proposed_code_is_served_and_labelled():
+    from ds_next.code import SERVED, label
+
+    assert SERVED == {"accepted", "proposed"}
+    assert label("accepted") == ""
+    assert "unreviewed" in label("proposed")

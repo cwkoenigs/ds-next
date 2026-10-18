@@ -120,6 +120,8 @@ hygiene a current model already has.
 
 ## 7. What to build now
 
+The decision, revised by the owner for simplicity and organic growth, is `canon/adr/adr-001-ship-canon-lib.md` (v2). Where it differs from this section, the ADR wins: proposed code is served at once, labelled unreviewed; lessons live next to the code or standard they changed; the ticket decides over a canon rule.
+
 ### 7.1 canon-lib is the product
 
 - **Source of truth stays the blocks** (`canon/blocks/<id>/`: code, tests, `BLOCK.md`). canon-lib

@@ -28,15 +28,24 @@ def _words(text: str) -> list[str]:
     return [w for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in STOP]
 
 
+# adr-001 (3): proposed code is served at once, labelled unreviewed; the owner's review makes it accepted
+SERVED = frozenset({"accepted", "proposed"})
+
+
+def label(status: str) -> str:
+    return "" if status == "accepted" else f" ({status}, unreviewed)"
+
+
 def search(canon: Canon, query: str, limit: int = 8) -> list[dict]:
-    """Accepted code symbols ranked by how well their name, summary and context match the query."""
+    """Served code symbols (accepted, or proposed and unreviewed) ranked by how well their name, summary
+    and context match the query."""
     terms = _words(query)
     if not terms:
         return []
     titles = {b.id: b.title for b in canon.blocks.values()}
     scored = []
     for s in canon.code.values():
-        if s["status"] != "accepted":
+        if s["status"] not in SERVED:
             continue
         fields = ((3, _words(s["name"])), (2, _words(s["summary"])),
                   (1, _words(s["signature"]) + _words(titles.get(s["block"], "")) + list(s["tags"]) + s["lessons"]))
@@ -175,8 +184,8 @@ def pieces(canon: Canon, ids: list[str], package: str) -> dict[str, dict]:
         s = canon.code.get(sid)
         if s is None:
             raise ValueError(f"no code symbol {sid!r}; code_search finds them (ids look like block-x:name)")
-        if s["status"] != "accepted":
-            raise ValueError(f"{sid} is in block {s['block']}, which is {s['status']}, not accepted")
+        if s["status"] not in SERVED:
+            raise ValueError(f"{sid} is in block {s['block']}, which is {s['status']}, not served")
         by_block.setdefault(s["block"], set()).add(s["name"])
     out = {}
     for bid, names in by_block.items():
@@ -243,8 +252,8 @@ def add(repo: Path, ids: list[str], canon: Canon | None = None, by: str | None =
         s = canon.code.get(sid)
         if s is None:
             raise ValueError(f"no code symbol {sid!r}; code_search finds them (ids look like block-x:name)")
-        if s["status"] != "accepted":
-            raise ValueError(f"{sid} is in block {s['block']}, which is {s['status']}, not accepted")
+        if s["status"] not in SERVED:
+            raise ValueError(f"{sid} is in block {s['block']}, which is {s['status']}, not served")
     if not ids:
         raise ValueError("no ids given")
     wanted: dict[str, list[str]] = {}
