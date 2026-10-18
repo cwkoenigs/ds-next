@@ -1,0 +1,19 @@
+{
+ "task": "envmerge",
+ "passed": 110,
+ "total": 110,
+ "failed": [],
+ "canon_lib": [],
+ "code_add": [
+  "block-dotenv",
+  "block-env-schema"
+ ],
+ "own_lines": 96,
+ "cond": "code",
+ "label": "code-post",
+ "run": 3,
+ "model": "haiku",
+ "seconds": 134,
+ "cost_usd": 0.043061329999999995,
+ "turns": 50
+}

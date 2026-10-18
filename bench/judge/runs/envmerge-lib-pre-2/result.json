@@ -1,0 +1,18 @@
+{
+ "task": "envmerge",
+ "passed": 110,
+ "total": 110,
+ "failed": [],
+ "canon_lib": [
+  "textsafe"
+ ],
+ "code_add": [],
+ "own_lines": 229,
+ "cond": "lib",
+ "label": "lib-pre",
+ "run": 2,
+ "model": "haiku",
+ "seconds": 219,
+ "cost_usd": 0.048609509999999995,
+ "turns": 33
+}

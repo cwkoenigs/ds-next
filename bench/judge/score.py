@@ -1,4 +1,4 @@
-"""Score a built repo with a blind judge's tests. Usage: python score.py <task> <repo> -> JSON line.
+"""Score a built repo with a blind judge's tests. Usage: python score.py <task> <repo> [binary name] -> JSON line.
 Reports the judge's pass count, which canon code the repo uses (canon_lib imports and code_add
 copies, by block), and how many lines the build wrote itself (src/, minus code_add copies)."""
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 
 task, repo = sys.argv[1], Path(sys.argv[2]).resolve()
 here = Path(__file__).resolve().parent
-binp = repo / ".venv" / "bin" / task
+binp = repo / ".venv" / "bin" / (sys.argv[3] if len(sys.argv) > 3 else task)
 env = {**{k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}, "TARGET_BIN": str(binp)}
 if not binp.exists():
     subprocess.run(["uv", "sync", "-q"], cwd=repo, capture_output=True, env=env, check=False)

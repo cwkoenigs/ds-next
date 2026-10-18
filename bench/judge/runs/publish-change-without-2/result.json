@@ -1,0 +1,20 @@
+{
+ "task": "publish-change",
+ "arm": "without",
+ "run": 2,
+ "model": "haiku",
+ "seconds": 75,
+ "regression_passed": 57,
+ "regression_total": 57,
+ "regression_failed": [],
+ "change_passed": 44,
+ "change_total": 44,
+ "change_failed": [],
+ "canon_lib": [],
+ "code_add": [],
+ "own_lines": 460,
+ "src_lines_changed": 64,
+ "test_lines_changed": 142,
+ "cost_usd": 0.020993019999999998,
+ "turns": 19
+}

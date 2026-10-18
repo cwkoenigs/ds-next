@@ -1,0 +1,73 @@
+[
+ {
+  "arm": "without",
+  "n": 3,
+  "regressions": 0,
+  "change_pass_median": 100.0,
+  "src_changed_median": 54,
+  "test_changed_median": 142,
+  "cost_median": 0.020993019999999998,
+  "turns_median": 19,
+  "failed": [
+   "test_page_renaming_rules",
+   "test_relative_links_between_pages_are_rewritten",
+   "test_warn_uses_repo_path_for_readme_in_drafts"
+  ]
+ },
+ {
+  "arm": "lessons",
+  "n": 3,
+  "regressions": 0,
+  "change_pass_median": 97.72727272727273,
+  "src_changed_median": 67,
+  "test_changed_median": 118,
+  "cost_median": 0.03979477,
+  "turns_median": 55,
+  "failed": [
+   "test_page_renaming_rules",
+   "test_relative_links_between_pages_are_rewritten",
+   "test_warn_uses_repo_path_for_readme_in_drafts"
+  ]
+ },
+ {
+  "arm": "lib",
+  "n": 3,
+  "regressions": 0,
+  "change_pass_median": 100.0,
+  "src_changed_median": 61,
+  "test_changed_median": 103,
+  "cost_median": 0.03537475,
+  "turns_median": 29,
+  "failed": []
+ },
+ {
+  "arm": "both",
+  "n": 3,
+  "regressions": 0,
+  "change_pass_median": 97.72727272727273,
+  "src_changed_median": 63,
+  "test_changed_median": 116,
+  "cost_median": 0.04249935999999999,
+  "turns_median": 44,
+  "failed": [
+   "test_page_renaming_rules",
+   "test_relative_links_between_pages_are_rewritten",
+   "test_warn_uses_repo_path_for_readme_in_drafts"
+  ]
+ },
+ {
+  "arm": "code",
+  "n": 3,
+  "regressions": 0,
+  "change_pass_median": 100.0,
+  "src_changed_median": 75,
+  "test_changed_median": 120,
+  "cost_median": 0.03429954,
+  "turns_median": 38,
+  "failed": [
+   "test_page_renaming_rules",
+   "test_relative_links_between_pages_are_rewritten",
+   "test_warn_uses_repo_path_for_readme_in_drafts"
+  ]
+ }
+]

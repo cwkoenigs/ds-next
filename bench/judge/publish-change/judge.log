@@ -1,0 +1,17 @@
+Permission deny rule (--disallowed-tools): Glob(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Read(path) rules are. Use Read(//Users/clarkkoenigs/Developer/**) instead (Read rules cover all file-reading tools).
+Permission deny rule (--disallowed-tools): Write(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Edit(path) rules are. Use Edit(//Users/clarkkoenigs/Developer/**) instead (Edit rules cover all file-editing tools).
+I wrote `test_judge.py` in the working directory. It has 44 test cases (with parametrize). I couldn't run any of it, so none of these tests have been checked against a real implementation yet.
+
+**What it covers:**
+- **Drafts:** a bad pointer in a page under `drafts/` at any depth gives a `WARN <repo path>: [[...]]` line. Bad pointers covered are unknown ids, unknown ids with a version, and versions that never existed. The pointer is left exactly as written and isn't counted in `pointers`. Good pointers in drafts are still turned into links and counted. One test puts a good and a bad pointer on the same line. Draft counts add to counts from regular pages. Pointers inside inline code or fenced blocks don't produce warnings.
+- **Not drafts:** a bad pointer still causes exit 2 and an empty output folder when the page is at `a.md`, `docs/x.md`, `mydrafts/`, `drafts-old/`, `draft/`, `drafts.md` or `docs/drafts.md`, or when the repo folder itself is named `drafts`.
+- **Exit codes and order:** warnings alone exit 0, warnings plus PENDING exit 1, and an ERROR elsewhere still exits 2 and writes nothing. Report lines must come out sorted with WARN lines mixed in among the others.
+- **Paths:** `drafts/README.md` is reported under its repo path and published as `drafts/index.md`. Also covered: a non-ASCII draft file name and text (names are compared after Unicode normalisation), and a draft linking with `../guide.md#sec` and to an image.
+- **publish.json:** `base_url` defaults to `""` and `warnings` to 0. `warnings` must equal the number of WARN lines printed. Draft pages appear in `pages`.
+- **`--base-url`:** `/docs` and `/docs/` give identical links and `base_url` = `/docs`; the same holds for a full `https://…` prefix. `/` counts as empty, and so does passing `""` or leaving the option out. Relative page links and pointers inside code are unaffected. The option also works on drafts, with ERROR (nothing written) and with PENDING. Giving `--base-url` with no value must fail without a traceback.
+- **Re-runs:** a second run with a different base URL rewrites the links. Deleting a draft and re-running removes its page and sets `warnings` back to 0. Two identical runs produce byte-identical output.
+
+**Assumptions that could cause false failures:**
+- **Manifest `date`:** written as a native TOML date (`date = 2026-01-15`). An implementation that only accepts a quoted string would fail every test.
+- **Which stream:** report lines are read from stdout, falling back to stderr. If ERROR, PENDING and WARN lines are split across the two streams, the sort-order tests can't check the true order.
+- **ERROR runs:** I don't check whether WARN lines are printed when the run exits 2. The ticket doesn't say, so those tests only check the exit code, that the output folder is empty, and that whatever lines appear are sorted.

@@ -1,0 +1,25 @@
+Permission deny rule (--disallowed-tools): Glob(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Read(path) rules are. Use Read(//Users/clarkkoenigs/Developer/**) instead (Read rules cover all file-reading tools).
+Permission deny rule (--disallowed-tools): Write(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Edit(path) rules are. Use Edit(//Users/clarkkoenigs/Developer/**) instead (Edit rules cover all file-editing tools).
+I wrote `test_judge.py` in the current directory, but I haven't run it, so it's untested. It has 41 test functions. With the parametrized cases that comes to about 110 test runs, more than your 30–45 target, but most of the extra runs are the cheap one-line type cases.
+
+**What it covers**
+- **Required, default and unknown variables:** a missing required variable, a required variable with a default, a missing optional one, and the exact `ERROR X: not in the schema` line. A variable set in two files is reported only once.
+- **Sorting:** errors from mixed sources (unknown, wrong type, missing required) must come out sorted by name, even when the dotenv file lists them in reverse order.
+- **Types:** 23 valid and 19 invalid values across all six types. This includes signed ints and big ints, mixed-case bools, the port limits 0, 1, 65535 and 65536, URLs with no host or no scheme, case-sensitive enum values, and non-ASCII enum values.
+- **Merging:** later files override earlier ones, a bad value can be fixed or broken by a later file, and a required variable can be supplied by a second file.
+- **Parsing:** the `export ` prefix, whitespace trimming, ` # comment` stripping, `=` inside a value, single quotes taken literally, every double-quote escape, empty quoted values and non-ASCII text.
+- **Unparseable lines:** each must produce `ERROR <file>:<line>:` with the correct line number (counting blank and comment lines) and the correct file name.
+- **Schema errors:** bad TOML, an unknown type, or a missing schema file must give only `ERROR schema:` lines and exit 1, with nothing else checked and nothing printed under `--print`.
+- **Other failures:** a missing env file, no arguments, only a schema argument, or a directory given as the env file must exit non-zero without a traceback.
+- **`--print`:** output sorted by name, defaults filled in, unset optional variables left out, nothing printed when there are errors, escaped newlines (never raw), and a round trip where feeding the output back in gives identical output.
+- **Paths and re-runs:** relative paths with `..`, `./` and nested folders, names with spaces and non-ASCII characters, and a re-run that gives the same output without touching the files.
+
+**Things I left untested because the ticket doesn't settle them**
+- Whether error lines go to stdout or stderr. The tests read both streams.
+- How `$` should appear in `--print` output. The tests decode the output and compare values, so either form passes.
+- Whether types are normalised when printed. Print tests mostly use plain strings.
+- Mixed-case sort order, spaces around `=`, duplicate names within one file, and whether defaults are type-checked.
+
+**Judgement calls**
+- **Invalid UTF-8:** the test only requires no traceback. The ticket doesn't say whether it's an error.
+- **Exact `--print` output:** `test_print_sorted_and_defaults_filled` requires stdout to contain only the `NAME="value"` lines. An extra "OK" line would fail it. I read the ticket's report-then-variables format as ruling such a line out.

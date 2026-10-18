@@ -1,0 +1,24 @@
+{
+ "task": "publish-change",
+ "arm": "code",
+ "run": 3,
+ "model": "haiku",
+ "seconds": 94,
+ "regression_passed": 57,
+ "regression_total": 57,
+ "regression_failed": [],
+ "change_passed": 44,
+ "change_total": 44,
+ "change_failed": [],
+ "canon_lib": [],
+ "code_add": [
+  "block-confined-write",
+  "block-markdown-pointers",
+  "block-safe-outdir"
+ ],
+ "own_lines": 308,
+ "src_lines_changed": 57,
+ "test_lines_changed": 120,
+ "cost_usd": 0.026470280000000002,
+ "turns": 26
+}

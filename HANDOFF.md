@@ -34,7 +34,7 @@ Versions 2 to 4 still exist in the code beside 5. What is proven and what is not
 
 | Repo | What | Branch |
 |---|---|---|
-| `~/Developer/canon` | standards (`*.md`, `adr/`), gotchas (`gotchas/`, 11), blocks (`blocks/`, 11), scaffolds (`scaffolds/`, 2), `canon-lib` (`lib/`), `index.json` (built by `scripts/build_index.py`) | `lessons` |
+| `~/Developer/canon` | standards (`*.md`, `adr/`), gotchas (`gotchas/`, 11), blocks (`blocks/`, 13), scaffolds (`scaffolds/`, 2), `canon-lib` (`lib/`), `index.json` (built by `scripts/build_index.py`) | `lessons` |
 | `~/Developer/ds-next` | the CLI and terminal UI, the MCP server, the benches (`bench/`) | `main` |
 | `~/Developer/skills-os`, `~/Developer/docs-ds` | procedures, and the Docusaurus renderer | unchanged here |
 
@@ -56,7 +56,7 @@ review.**
   - **repo:** `project_status`
 - **Code intelligence wired in:** codebase-memory-mcp (a code graph, read-only), Serena (LSP),
   and `cortex search`.
-- 112 tests pass.
+- 113 tests pass.
 
 **Accepted code exists in three shapes.** The first two came first; the third came out of design
 discussion and is the current proposal.
@@ -73,7 +73,7 @@ discussion and is the current proposal.
    `uv add --editable <canon>/lib` and import from it (`from canon_lib.textsafe import json_literal`).
    - Proposed rules: append-only (a breaking change ships under a new name), and heavy
      dependencies in extras.
-   - 65 tests pass.
+   - 145 tests pass.
 
 ## 4. Tests so far, and what they actually showed
 
@@ -269,34 +269,123 @@ build read.
 - **Cost varies a lot run to run** (the control ranged $0.06 to $0.27), so with n=3 the cost
   ranking is a direction, not a measurement.
 
-## 5. Where it stands (after round 2)
+### 4.7 Round 3a: the maintenance test (is a canon-built repo easier to change?)
 
-**Shown, with an independent judge:**
-- Agents pull the team's accepted code when it exists, and pull the same pieces (9/9 builds,
-  Jaccard 0.83).
-- Pulling it cuts what they write by about a third on a 300-to-500-line task and, as a package, cut
-  cost by about half, with no loss on the judge's tests.
-- A fix in the package reaches every repo that uses it with no change to the repo; a fix in a copy
-  reaches a repo on the next `code_add`.
-- Lessons are absorbed and followed, including over an ambiguous ticket.
+**Why:** "plug and play" should pay most on change, and a shared package might also hurt there
+(behaviour that lives in the package cannot be changed in the repo).
+
+**The change** (`bench/tasks/publish-change/ticket.md`): pages under `drafts/` publish with bad
+pointers as `WARN` instead of `ERROR` (never blocking, never changing the exit code); a `--base-url`
+prefix for pointer links, trailing slash dropped; `publish.json` gains `base_url` and `warnings`.
+Applied by Haiku to each of the 15 round-2 repos, with the same knowledge access its arm had
+(`bench/judge/change.sh`). Judged twice: the original 57 cases (regressions) and a new blind judge
+for the change (Opus; 31 tests, 44 cases; its reference passes 44/44 and the old 57 with no
+regressions; 5 of 5 planted bugs caught).
+
+| Arm | Regressions | Change judge, median (range) | src lines changed, median | test lines changed, median | Cost, median | Turns, median |
+|---|---|---|---|---|---|---|
+| without | 0 | 100% (97.7 to 100) | 54 | 142 | $0.021 | 19 |
+| lessons | 0 | 97.7% (97.7 to 97.7) | 67 | 118 | $0.040 | 55 |
+| lib | **0** | **100% (100 to 100)** | 61 | 103 | $0.035 | 29 |
+| both | 0 | 97.7% (97.7 to 97.7) | 63 | 116 | $0.042 | 44 |
+| code | 0 | 100% (97.7 to 100) | 75 | 120 | $0.034 | 38 |
+
+`bench/judge/summarize_change.py` prints this.
+
+**What happened:**
+- **No regressions anywhere:** no test a repo passed before the change failed after it, in any of
+  the 15 repos.
+- **Every build implemented the change correctly.** The only change-judge failure, in 7 of 15
+  builds, is the README rule carried forward: a `drafts/README.md` stays `README.md` instead of
+  becoming `index.md`, so one WARN test fails. It is the pre-existing reading, not a maintenance
+  failure: the lessons arms fail it 3/3 (they follow the gotcha), the control 1/3, the library 1/3,
+  the package 0/3.
+- **A canon-built repo was neither easier nor harder to change.** Diff sizes are alike (54 to 75
+  source lines). Cost was 1.6 to 2× the control, almost all of it reading: the lessons arm spent 55
+  turns against 19.
+- **The package's rigidity was not tested.** The change did not need to alter pulled behaviour
+  (pointer parsing, out-dir safety), so the case where a package would have to be changed, or
+  wrapped, is still open (6.3).
+
+### 4.8 Round 3b: the growth test (does the library pay off as it grows?)
+
+**The claim under test:** "AI only gets more accurate as the code base grew. People would almost
+always pull the same code." Directly: promote code from one real build into canon, then build a
+sibling task and see whether it is pulled, and what that does to the code written, the cost and
+the judge's score.
+
+**A domain canon did not cover:** dotenv files. Two tickets share the parsing, the TOML schema and
+the type rules. `envcheck` (`bench/tasks/envcheck/ticket.md`) checks dotenv files against a schema;
+`envmerge` (`bench/tasks/envmerge/ticket.md`) merges them for a deployment and writes the result
+atomically. Both judges (Opus, adversarial) were validated: envcheck 96 cases, reference 96/96,
+9 of 9 planted bugs caught; envmerge 110 cases, reference 110/110, 7 of 7 caught.
+
+**Seed:** `envcheck`, three builds without canon, all 96/96. Seed 3 had a stand-alone `dotenv.py`
+and `schema.py` with their own tests. `canon/scripts/promote.py` turned each into a block and a
+canon-lib module (`block-dotenv`, `block-env-schema`; 13 blocks, 69 symbols, every one stands
+alone). The blocks were marked accepted on the judge's word, because `code_search` serves only
+accepted code; the owner has not reviewed them.
+
+**Then `envmerge`, Haiku, 3 builds per arm:**
+
+| Arm | Judge pass | Pulled | Lines the build wrote, median (range) | Cost, median (range) | Turns |
+|---|---|---|---|---|---|
+| without canon | 110/110 ×3 | nothing | 248 (231 to 270) | $0.041 (0.031 to 0.044) | 25 |
+| canon before promotion (package) | 110/110 ×3 | textsafe 3/3, confined 1/3 | 256 (229 to 263) | $0.049 (0.048 to 0.071) | 37 |
+| **canon after promotion (package)** | 110/110 ×3 | **dotenv + schema 3/3** | **96 (80 to 110)** | **$0.037 (0.035 to 0.038)** | 28 |
+| **canon after promotion (function library)** | 110/110 ×3 | **dotenv + schema 3/3** | **96 (87 to 101)** | $0.042 (0.040 to 0.043) | 50 |
+
+**What happened:**
+- **Growth works mechanically, end to end:** code from one real build was promoted and every
+  sibling build pulled it, through both shapes. The code written fell by 61% and cost did not rise.
+- **Before promotion, canon in hand but nothing relevant in it cost more, not less:** the builds
+  read what was there and used the nearest thing. One quoted dotenv values with
+  `textsafe.json_literal` (JSON escapes are not dotenv escapes; it patched `$` by hand) and still
+  passed the judge. A post-promotion build read the same function and rejected it as unsuitable.
+- **Correctness is at the ceiling in every arm, again** (110/110 everywhere). Growth changed how
+  much was written and what it was made of, not the judge's score. On tasks like these, with this
+  model, "more accurate" cannot be measured; "less code, pulled from one place" can.
+- **The function library pulled finer-grained:** `read_env`, `load_schema`, `check_value`,
+  `SchemaError` by name (plus `check_one_line` for file names in the header), in about 50 turns;
+  the package arm imported the modules in 28.
+
+## 5. Where it stands (after rounds 2 and 3)
+
+**Shown, with independent judges, on four tasks:**
+- Agents pull the team's accepted code when it exists, and pull the same pieces (publish: 9/9 on
+  confined, outdir, pointers; envmerge: 6/6 on dotenv, schema).
+- Pulling it cuts what they write: by a third on publish, by 61% on envmerge once canon held the
+  domain's code. Cost did not rise; as a package it fell.
+- Growth works end to end: code promoted from one real build was pulled by every sibling build,
+  through both shapes (4.8).
+- A fix in the package reaches every repo with no change to the repo; a fix in a copy reaches a repo
+  on the next `code_add` (4.5).
+- A canon-built repo changes as safely as any other: zero regressions in 15 change builds (4.7).
 
 **Not shown:**
-- That canon makes builds more correct. On four tasks and two judges the control passed 96 to 100%.
-  What canon holds today is hygiene a current model already has.
-- That builds converge in the code they still write (7 to 34% similar, in every arm).
-- Anything about a real codebase: every build started from an empty repo, so graph, LSP and
-  reconcile against a living repo were never exercised.
+- That canon makes builds more correct. On five tasks, with four validated judges, the control
+  passed 96 to 100%. Haiku is at the ceiling on tasks of this kind, so "more accurate" cannot be
+  measured here.
+- That a repo built on canon is cheaper to change: it cost 1.6 to 2× more, all of it reading.
+- Anything about a large or old codebase: every repo was hours old and a few hundred lines; graph,
+  LSP and reconcile against a living repo were never exercised.
 
 **Shown against the idea, as built today:**
-- Lessons are expensive to carry (15 to 20 documents read per build, 2.4× cost) and can encode one
-  project's decision as a universal rule that the agent then follows over the ticket without saying
-  so.
+- Lessons are expensive to carry (15 to 20 documents read per build; 2.4× cost on a build, 2× on
+  a change) and have not bought a single judge point in any round. One lesson encodes a project
+  decision (root README only) that the agent follows over an ambiguous ticket without saying so,
+  and it followed through into the change.
+- Canon in hand with nothing relevant in it costs more, not less: the builds read what is there and
+  use the nearest thing, sometimes wrongly (4.8).
 - Accepted code carries its defects to every consumer, and a model that trusts it does not test
-  around it. The pin defect reached 5 of the 6 builds that pulled the function.
+  around it (4.5).
 
-**Where this leaves the owner's idea.** "People would almost always pull the same code" and "fix it
-once" have evidence. "AI only gets more accurate as the code base grew" does not yet, and the two
-tests that would bear on it (6.2, 6.3) have not been run.
+**Where this leaves the owner's idea.** "People would almost always pull the same code", "fix it
+once" and "it pays off as the library grows" now have evidence: reuse, convergence on what is
+pulled, 35 to 61% less code written, fix-once propagation, promotion from real builds. "AI only
+gets more accurate" has none: correctness was at the ceiling without canon on every task tried.
+On this evidence canon buys less code written from scratch, one place to fix it, and a shared
+vocabulary across repos, not a higher score.
 
 ## 6. Open questions and the next tests
 
@@ -304,26 +393,23 @@ tests that would bear on it (6.2, 6.3) have not been run.
    (conventions, internal APIs, domain rules), judged by a judge who is given the team's standards;
    or domains where Haiku fails on its own (none of the file-and-CLI tasks did that). Canon has
    little team-specific content today: the manifest format, the `[[id]]` convention, two scaffolds.
-2. **Maintenance test (not run):** give each round-2 repo a change ticket; judge with the old suite
-   (regressions) plus a new blind one; compare arms on regressions, diff size and cost. "Plug and
-   play" should pay most on change, and this is where a shared package may also hurt (behaviour
-   that lives in the package cannot be changed in the repo).
-3. **Growth test (not run):** promote accepted code from one build into canon, then build a sibling
-   task; measure pulls, lines written and cost over the sequence. This is the "more accurate as the
-   code base grew" claim, directly. Promotion is not built; by hand it is a block directory, a
-   `BLOCK.md` and `build_index.py`.
-4. **Lessons need a different shape:** few, specific, marked as decisions with their scope; when a
-   lesson contradicts the ticket the agent must say so (a rule for gotcha-agent-trust); and
-   retrieval by applicability, so a docs tool never reads the Cortex SDK gotcha. The `applies_to`
-   field exists and nothing uses it in the file arms.
-5. **Package or copy:** both work; the package is cheaper and propagates fixes without a re-pull;
-   copies need no shared install and `reconcile` flags a stale copy (once the manifest has tags).
-   Round 2 favours the package.
-6. **Owner review** of every gotcha, block and scaffold, before anyone relies on them. Two have now
-   been changed by a judge's finding (the pin message) and questioned by one (root-README rule,
-   out-dir rule).
-7. **The judge vs canon's rules:** stage's refusal to empty a folder it did not build, and the
-   root-README rule. Is the rule right, or the ticket?
+2. **Lessons need a different shape.** The lessons arm is the weak part in every round. Few,
+   specific, scoped as decisions; when a lesson contradicts the ticket the agent must say so (a rule
+   for gotcha-agent-trust); retrieval by applicability, so a docs tool never reads the Cortex SDK
+   gotcha. The `applies_to` field exists and nothing uses it in the file arms.
+3. **A change that touches pulled code.** The maintenance test never had to change behaviour that
+   lived in canon. Run a change ticket that does (a different pointer syntax, say), to see whether
+   the package shape blocks, wraps or forks.
+4. **Promotion as a process.** 4.8 promoted by hand with `promote.py`, accepted on the judge's word.
+   Open: what the owner's review gate looks like, how a promoted block is versioned when its source
+   repo changes, and how near-duplicates across repos are found (the graph's job).
+5. **Package or copy:** both pulled the same code and scored the same; the package is cheaper on
+   builds (28 vs 50 turns on envmerge) and propagates fixes; the copy needs no shared install.
+   Rounds 2 and 3 favour the package.
+6. **Owner review** of every gotcha, block and scaffold: 13 blocks now, two of them accepted on a
+   judge's word only.
+7. **The judge vs canon's rules:** out-dir clearing and the root-README rule. Is the rule right, or
+   the ticket?
 
 **The owner's guidance so far:**
 - Don't over-design.
@@ -348,8 +434,17 @@ DS_CANON=~/Developer/canon .venv/bin/python bench/code_symbols_check.py   # ever
 bench/judge/write_judge.sh <task> [model] ["30 to 45"]       # writes bench/judge/<task>/test_judge.py
 .venv/bin/python bench/judge/validate.py <workdir> <task>    # reference must pass; mutants must fail
 bench/judge/run.sh <task> <without|lessons|lib|both|code> <n> # bench/judge/runs/<task>-<arm>-<n>/result.json
-.venv/bin/python bench/judge/summarize.py <task>             # per-arm table (median, range, similarity)
+.venv/bin/python bench/judge/summarize.py <task> [arm ...]   # per-arm table (median, range, similarity)
 .venv/bin/python bench/judge/reads.py <task>                 # what each build read and pulled
+
+# the maintenance test (round-2 repos must still be on disk; snapshots in runs/publish-<arm>-<n>/before)
+bench/judge/change.sh <arm> <n>                              # runs/publish-change-<arm>-<n>/result.json
+.venv/bin/python bench/judge/summarize_change.py
+
+# the growth test: RUN_LABEL names the run, DS_CANON picks the canon (a frozen copy for "before")
+DS_CANON=<frozen canon> RUN_LABEL=lib-pre bench/judge/run.sh envmerge lib 1
+RUN_LABEL=lib-post bench/judge/run.sh envmerge lib 1
+cd ~/Developer/canon && python scripts/promote.py --repo <repo> --module src/<pkg>/<mod>.py --tests tests/test_<mod>.py --id block-<name> --title "..."
 ```
 
 A new task needs `bench/tasks/<task>/ticket.md`, a reference in `bench/tasks/ref/<task>.py` and

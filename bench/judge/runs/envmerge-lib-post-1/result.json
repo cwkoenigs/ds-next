@@ -1,0 +1,19 @@
+{
+ "task": "envmerge",
+ "passed": 110,
+ "total": 110,
+ "failed": [],
+ "canon_lib": [
+  "dotenv",
+  "schema"
+ ],
+ "code_add": [],
+ "own_lines": 110,
+ "cond": "lib",
+ "label": "lib-post",
+ "run": 1,
+ "model": "haiku",
+ "seconds": 141,
+ "cost_usd": 0.03759375,
+ "turns": 34
+}

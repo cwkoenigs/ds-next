@@ -1,0 +1,25 @@
+{
+ "task": "publish-change",
+ "arm": "lessons",
+ "run": 3,
+ "model": "haiku",
+ "seconds": 102,
+ "regression_passed": 55,
+ "regression_total": 57,
+ "regression_failed": [
+  "test_page_renaming_rules",
+  "test_relative_links_between_pages_are_rewritten"
+ ],
+ "change_passed": 43,
+ "change_total": 44,
+ "change_failed": [
+  "test_warn_uses_repo_path_for_readme_in_drafts"
+ ],
+ "canon_lib": [],
+ "code_add": [],
+ "own_lines": 462,
+ "src_lines_changed": 67,
+ "test_lines_changed": 118,
+ "cost_usd": 0.0299774,
+ "turns": 36
+}

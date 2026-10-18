@@ -1,0 +1,10 @@
+{
+ "envmerge": {
+  "reference": "109/110",
+  "reference_failed": [
+   "test_empty_schema_and_empty_env"
+  ],
+  "caught": 7,
+  "of": 7
+ }
+}

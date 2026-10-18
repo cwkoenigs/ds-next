@@ -1,0 +1,1 @@
+{"task": "publish", "passed": 57, "total": 57, "failed": [], "canon_lib": [], "code_add": ["block-confined-write", "block-markdown-pointers", "block-safe-outdir"], "own_lines": 308}

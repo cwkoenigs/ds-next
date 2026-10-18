@@ -1,0 +1,30 @@
+Permission deny rule (--disallowed-tools): Glob(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Read(path) rules are. Use Read(//Users/clarkkoenigs/Developer/**) instead (Read rules cover all file-reading tools).
+Permission deny rule (--disallowed-tools): Write(//Users/clarkkoenigs/Developer/**) is not matched by file permission checks — only Edit(path) rules are. Use Edit(//Users/clarkkoenigs/Developer/**) instead (Edit rules cover all file-editing tools).
+I've written `test_judge.py` in the current directory. I couldn't run anything, so none of it has been checked against a real `envmerge` yet. It has 33 test functions, which expand to about 100 cases through parametrize, and each one calls `$TARGET_BIN` with `subprocess` inside its own `tmp_path`.
+
+**What it covers:**
+- **Successful merge:** later files override earlier ones; output is sorted by name and every value is double-quoted; the generated header lists the input files in the order given; `MERGED n from m files` reports the right counts, including defaults and kept unknown variables; an empty schema with an empty file works; re-running gives byte-identical output; and relative paths with `..`, including nested folders, work for the schema, the inputs and `--out`.
+- **Dotenv parsing:** the `export ` prefix; trimming of unquoted values; ` # comment` is stripped but `a#b` is kept; values containing `=`; single quotes taken literally; every double-quote escape; empty values; non-ASCII text; and blank and comment lines skipped.
+- **Unparseable lines:** each must produce `ERROR <file>:<line>:` with the right 1-based line number and the right file name when the bad line is in an overlay.
+- **Type rules:** valid and invalid cases for every type, such as `+5`, `0x10`, `oN`, ports 0 and 65535, `http://` with no host, and enum values matching only with exact case. One test checks that an overlay can replace an invalid value from the base file.
+- **Errors and warnings:**
+  - A missing required variable is an error.
+  - A required variable with a default is fine.
+  - Unknown variables are errors unless `--allow-unknown` is given; with it, the warning line is checked word for word and the variable is kept in the output.
+  - Several ERROR lines come out sorted, and ERROR and WARN lines are sorted together.
+- **Schema problems:** invalid TOML, an unknown type, an enum with no `values`, a missing `type`, a non-bool `required`, and a missing schema file. Each must produce only `ERROR schema:` lines, with or without `--allow-unknown`.
+- **Never touching `<out>` on error:** an existing output file must stay byte-identical, no stray temporary files may be left behind, and the exit code must be exactly 1.
+- **Other failures:** a missing input file, `--out` pointing at a directory, and bad command lines must all fail with a non-zero exit and no traceback. The directory case must also print exactly one line on stderr.
+
+**Choices I made where the ticket is loose:**
+- The header may use either `,` or `, ` between file names.
+- `1 file` is accepted as well as `1 files` in the MERGED line.
+- Report lines are read from stdout and stderr together, because the ticket doesn't say which stream they go to.
+- Output values are checked by decoding them, so a `$` is accepted whether or not it is escaped.
+- I don't test anything the ticket leaves open:
+  - whether int and bool values are normalized
+  - whether an empty value counts as missing
+  - whether a default is type-checked
+  - duplicate names within one file
+  - CRLF line endings
+  - whether the output folder is created when it doesn't exist
