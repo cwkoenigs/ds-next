@@ -119,3 +119,13 @@ def test_overdue_decline_is_reported(tmp_path, canon, skills):
     scaffold.write(a, tmp_path / a.name, canon, skills, git=False)
     r = reconcile.check(tmp_path / a.name, canon, today=dt.date.today() + dt.timedelta(days=91))
     assert r.ok and r.overdue == ["testing"]
+
+
+def test_stale_block_is_reported_even_when_the_manifest_is_broken(tmp_path, canon):
+    repo = tmp_path / "r"
+    (repo / ".ds").mkdir(parents=True)
+    (repo / ".ds" / "manifest.toml").write_text('[repo]\nname = "r"\n\n[blocks.block-demo]\nversion = 1\n')
+    newer = make_canon(tmp_path / "canon2", bump={"block-demo": 2})
+    r = reconcile.check(repo, newer)
+    assert any("tags" in e for e in r.errors)
+    assert r.pending == ["block-demo v2 (block; this repo has v1)"]

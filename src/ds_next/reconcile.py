@@ -57,6 +57,26 @@ def _docs(repo: Path) -> list[Path]:
     return out
 
 
+def _check_blocks(manifest: dict, canon, rep) -> None:
+    """Accepted code in use, and which copies are behind the canon. Runs even when the rest of the
+    manifest is broken, so a stale block is never hidden behind another error."""
+    blocks = manifest.get("blocks", {})
+    if not isinstance(blocks, dict) or not all(isinstance(e, dict) for e in blocks.values()):
+        rep.errors.append("[blocks] must hold one table per block, like [blocks.block-text-safety]")
+        blocks = {}
+    for bid, e in blocks.items():
+        b = canon.blocks.get(bid)
+        v = _version(e)
+        if b is None:
+            rep.errors.append(f"manifest uses block {bid}, which the canon does not have")
+        elif v is None or v > b.version:
+            rep.errors.append(f"block {bid}: version must be a whole number from 1 to v{b.version}, not {e.get('version')!r}")
+        else:
+            rep.blocks.append(f"{bid} v{v}")
+            if v < b.version:
+                rep.pending.append(f"{bid} v{b.version} (block; this repo has v{v})")
+
+
 def _version(e: dict) -> int | None:
     v = e.get("version")
     return v if isinstance(v, int) and not isinstance(v, bool) and v >= 1 else None
@@ -90,6 +110,7 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
     tags = head.get("tags")
     if not (isinstance(tags, list) and tags and all(isinstance(t, str) and t for t in tags)):
         rep.errors.append("[repo] tags must be a non-empty list of strings")
+        _check_blocks(manifest, canon, rep)
         return rep
     rep.tags = list(tags)
     entries = manifest.get("standards", {})
@@ -150,21 +171,7 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
         elif not any(err.startswith(f"{std.id}:") for err in rep.errors):
             rep.pending.append(f"{std.id} v{std.version}")
 
-    blocks = manifest.get("blocks", {})
-    if not isinstance(blocks, dict) or not all(isinstance(e, dict) for e in blocks.values()):
-        rep.errors.append("[blocks] must hold one table per block, like [blocks.block-text-safety]")
-        blocks = {}
-    for bid, e in blocks.items():
-        b = canon.blocks.get(bid)
-        v = _version(e)
-        if b is None:
-            rep.errors.append(f"manifest uses block {bid}, which the canon does not have")
-        elif v is None or v > b.version:
-            rep.errors.append(f"block {bid}: version must be a whole number from 1 to v{b.version}, not {e.get('version')!r}")
-        else:
-            rep.blocks.append(f"{bid} v{v}")
-            if v < b.version:
-                rep.pending.append(f"{bid} v{b.version} (block; this repo has v{v})")
+    _check_blocks(manifest, canon, rep)
 
     for f in _docs(repo):
         try:
