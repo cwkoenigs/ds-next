@@ -412,6 +412,10 @@ class Agent:
             connection=self.connection,
             effort=self.effort,
             resume=self._resume,
+            # The terminal brings its own servers in-process. Skip the user's mcp.json: once `ds`
+            # is registered there for plain Cortex sessions, loading it here too makes every
+            # tool name a duplicate and the API rejects the request.
+            extra_args={"only-explicit-mcp-servers": None},
         )
 
     async def _permit(self, tool_name: str, inp: dict[str, Any], ctx: Any):
