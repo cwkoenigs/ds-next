@@ -37,6 +37,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
+from rich import box
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -302,9 +303,9 @@ class Repl:
     def banner(self) -> None:
         shell = "found" if docs_shell_path() else "not found"
         body = Group(
-            Text("The team's knowledge system: start, check and grow projects from the canon."),
+            Text("Start, check and grow projects from the team's canon."),
             Text(""),
-            Text("/new to start a project · /help for commands · ctrl-c twice (or /exit) leaves", style=DIM),
+            Text("/new starts a project · /help lists commands · /exit leaves", style=DIM),
             Text(""),
             Text(f"cwd:    {_tilde(self.cwd)}", style=DIM),
             Text(f"canon:  {len(self.canon.standards)} standards, {len(self.canon.scaffolds)} project types "
@@ -312,7 +313,7 @@ class Repl:
             Text(f"skills: {len(self.skills.all)} from skills-os · docs-ds {shell}", style=DIM),
         )
         self.console.print(Panel(body, title=f"[bold]▼ ds-next[/bold] [dim]v{__version__}[/dim]", title_align="left",
-                                 border_style=BRAND, expand=False, padding=(0, 2), width=64))
+                                 border_style=BRAND, box=box.SQUARE, expand=False, padding=(0, 2)))
         self.console.print()
 
     def _refresh_where(self) -> None:
