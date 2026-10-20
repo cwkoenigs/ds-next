@@ -49,7 +49,7 @@ def test_scaffold_tool_then_status(tmp_path, canon, skills):
     assert err and "scaffold_get" in stale          # must fetch the accepted scaffold first
     text, err = call(tools, "scaffold_project", {"scaffold": "python-cli", "scaffold_version": 3,
                                                  "name": "demo-cli", "purpose": "A demo", "owner": "", "snowflake": ""})
-    assert not err and "from python-cli v3" in text and "0 pending, 0 errors" in text
+    assert not err and "from python-cli v3" in text and "0 pending" in text
     status, _ = call(agent.tools(canon, skills, tmp_path / "demo-cli"), "project_status", {})
     assert '"adopted"' in status and "demo-cli" in status
     again, err = call(tools, "scaffold_project", {"scaffold": "python-cli", "scaffold_version": 3,
@@ -80,9 +80,10 @@ def test_render_like_claude_code():
     render(con, UserMessage([ToolResultBlock("t1", [{"type": "text", "text": "# Testing\nline2\nline3"}])]), state)
     render(con, ResultMessage("success", 1500, 1000, False, 2, "s"), state)
     out = con.export_text()
-    assert "⏺ Here are the standards." in out
-    assert "⏺ canon_read(testing)" in out and "⏺ Bash(uv run pytest -q)" in out
-    assert "⎿  # Testing … +2 lines" in out and "2 turns · 1.5s" in out
+    assert "● Here are the standards." in out
+    assert "→ canon_read testing" in out and "→ Bash uv run pytest -q" in out
+    assert "⎿ # Testing" in out and "2 more lines" in out and "╰ 2 turns · 1.5s" in out
+    assert state["last_result"].startswith("# Testing")
 
 
 def test_permission_payloads():

@@ -8,10 +8,11 @@ import tempfile
 from pathlib import Path
 
 import typer
-from rich.console import Console
 from rich.markdown import Markdown
+from rich.text import Text
 
 from . import docs as docs_mod
+from . import ui_style as S
 from . import reconcile as reconcile_mod
 from . import scaffold
 from .kb import Canon, Skills
@@ -20,7 +21,7 @@ app = typer.Typer(add_completion=False, invoke_without_command=True,
                   help="ds, rebuilt small: the team's knowledge system in a Claude-Code-style terminal.")
 canon_app = typer.Typer(help="Read the canon.", no_args_is_help=True)
 app.add_typer(canon_app, name="canon")
-out = Console(highlight=False, markup=False, soft_wrap=True)
+out = S.console(color=sys.stdout.isatty(), markup=False, soft_wrap=True)   # same grammar, no colour in a log
 
 
 @app.callback()
@@ -44,7 +45,7 @@ def new(name: str,
             raise ValueError(f"answers file is for {a.name!r}, not {name!r}")
         files = scaffold.write(a, directory / name)
     except (ValueError, TypeError, FileExistsError) as e:
-        out.print(f"not created: {e}", style="red")
+        out.print(f"not created: {e}", style="err")
         raise typer.Exit(2)
     rep = reconcile_mod.check(directory / name)
     out.print(f"created {(directory / name).resolve()} ({len(files)} files)\n{rep.summary()}")
@@ -64,15 +65,19 @@ def reconcile(path: Path = typer.Argument(Path("."), help="repo, or a directory 
             out.print(f"ds: {len(rep.pending)} standard(s) pending ({', '.join(rep.pending)}). "
                       "Open ds-next and run /status.")
     else:
-        out.print(rep.summary())
+        kind = "ok" if rep.ok and not rep.pending else ("warn" if rep.ok else "err")
+        out.print(S.outcome(kind, repo.name, rep.counts()))
         if rep.outputs:
-            out.print(f"  outputs  {', '.join(rep.outputs)}  (declared by the {rep.type or 'scaffold'} type; publishing is not tracked yet)")
+            out.print(S.labelled("outputs", f"{', '.join(rep.outputs)} · {rep.type or 'scaffold'} type · publishing not tracked yet"))
         for p in rep.pending:
-            out.print(f"  pending  {p}")
+            out.print(S.labelled("pending", p))
         for sid, why in rep.declined.items():
-            out.print(f"  declined {sid}: {why}")
+            out.print(S.labelled("declined", f"{sid} · {why}"))
+        if rep.pending:
+            out.print(S.hint("open ds-next and run /status to adopt or decline"))
     for e in rep.errors:
-        out.print(f"  error    {e}", style="red")
+        for line in S.error(e):
+            out.print(line)
     raise typer.Exit(0 if rep.ok else 1)
 
 
@@ -82,7 +87,7 @@ def canon_list(tags: str = typer.Option("", help="comma-separated repo tags")):
     c = Canon()
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
     for s in (c.applicable(tag_list) if tag_list else sorted(c.standards.values(), key=lambda s: s.id)):
-        out.print(f"{s.id:22} v{s.version}  {s.title}")
+        out.print(Text.assemble("  ", (f"{s.id:<26}", "bold"), (f"{s.version:<4}", "muted"), f"{', '.join(s.applies_to)[:20]:<22}", (s.title, "muted")))
 
 
 @canon_app.command("read")
@@ -108,12 +113,12 @@ def add(block: str, path: Path = typer.Argument(Path("."), help="repo, or a dire
     """Add an accepted canon block to this repo, without the agent."""
     repo = reconcile_mod.find_repo(path.resolve())
     if repo is None:
-        out.print(f"{path.resolve()} is not a ds repo", style="red")
+        out.print(f"{path.resolve()} is not a ds repo", style="err")
         raise typer.Exit(1)
     try:
         done = scaffold.add_block(repo, block, Canon())
     except (ValueError, FileExistsError) as e:
-        out.print(f"not added: {e}", style="red")
+        out.print(f"not added: {e}", style="err")
         raise typer.Exit(2) from None
     out.print(f"{done['note']}: {done['block']} v{done['version']} -> {', '.join(done['files']) or 'no files'}")
     if done["requires"]:
@@ -139,10 +144,10 @@ def docs(output: Path = typer.Option(None, "--out", help="build directory (defau
     try:
         r = docs_mod.build(content, title, target, protect=[repo] if repo else [])
     except (ValueError, FileNotFoundError) as e:
-        out.print(str(e), style="red")
+        out.print(str(e), style="err")
         raise typer.Exit(1) from None
     if r.returncode != 0:
-        out.print((r.stdout + r.stderr)[-2000:], style="red")
+        out.print((r.stdout + r.stderr)[-2000:], style="err")
         raise typer.Exit(1)
     out.print(f"built {title} at {target.resolve()}")
 
@@ -191,7 +196,7 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
             async for msg in agent.turn(prompt):
                 render(out, msg, state)
         except TurnStalled as e:
-            out.print(f"  ⎿  {e}", style="yellow")
+            out.print(S.result(str(e), error=True))
             raise typer.Exit(3) from None
         finally:
             await agent.close()

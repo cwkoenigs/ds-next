@@ -33,8 +33,12 @@ class Report:
         return not self.errors
 
     def summary(self) -> str:
-        return (f"{self.repo}: {len(self.adopted)} adopted, {len(self.declined)} declined, "
-                f"{len(self.pending)} pending, {len(self.errors)} errors")
+        return f"{self.repo}: {self.counts()}"
+
+    def counts(self) -> str:
+        """The numbers without the name: 26 adopted · 1 declined · 0 pending (errors only when there are any)."""
+        s = f"{len(self.adopted)} adopted · {len(self.declined)} declined · {len(self.pending)} pending"
+        return s + (f" · {len(self.errors)} errors" if self.errors else "")
 
 
 def find_repo(start: Path) -> Path | None:

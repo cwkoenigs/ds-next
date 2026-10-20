@@ -14,13 +14,12 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
-from prompt_toolkit.widgets import TextArea
+from prompt_toolkit.widgets import Frame, TextArea
 
-ACCENT = "#d97757"
-STYLE = Style.from_dict({
-    "accent": f"{ACCENT} bold", "dim": "#808080", "error": "#e06c75", "label": "#a0a0a0",
-    "focus": f"{ACCENT} bold", "field": "", "title": "bold",
-})
+from . import ui_style as S
+from .ui_style import G, LABEL_W
+
+STYLE = Style.from_dict(S.pt_style())
 
 
 async def pick(title: str, options: list[tuple[str, str, str]]) -> str | None:
@@ -58,9 +57,9 @@ async def pick(title: str, options: list[tuple[str, str, str]]) -> str | None:
         out = [("class:title", f" {title}\n\n")]
         for i, (_, label, desc) in enumerate(options):
             on = i == state["i"]
-            out += [("class:accent" if on else "", f" {'❯' if on else ' '} {i + 1}. {label}"),
+            out += [("class:accent" if on else "", f" {G.select if on else ' '} {i + 1}. {label}"),
                     ("class:dim", f"  {desc}\n")]
-        out.append(("class:dim", "\n ↑↓ move · Enter choose · Esc cancel"))
+        out += [("class:dim", "\n ↑↓ move · "), ("class:key", " Enter choose "), ("class:dim", " · Esc cancel")]
         return FormattedText(out)
 
     app = Application(layout=Layout(Window(FormattedTextControl(text), dont_extend_height=True)),
@@ -131,8 +130,8 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
             on = get_app().layout.has_focus(areas[f.key])
             mark = "*" if f.required else " "
             return FormattedText([("class:focus" if on else "class:label",
-                                   f" {'❯' if on else ' '} {f.label:<12}{mark} ")])
-        return Window(FormattedTextControl(get), width=17, dont_extend_width=True)
+                                   f"{G.select if on else ' '} {f.label:<{LABEL_W}}{mark} ")])
+        return Window(FormattedTextControl(get), width=LABEL_W + 4, dont_extend_width=True)
 
     def hint():
         focused = next((f for f in fields if get_app().layout.has_focus(areas[f.key])), None)
@@ -153,7 +152,8 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
         elif error["msg"]:
             parts.append(("class:error", f"   {error['msg']}\n"))
         keys = "←/→ change · " if focused_choice() else ""
-        parts.append(("class:dim", f"   {keys}Tab/↓ next · ↑ back · Enter submit · Esc cancel"))
+        parts += [("class:dim", f"   {keys}Tab next · ↑ back · "), ("class:key", " Enter submit "),
+                  ("class:dim", " · Esc cancel")]
         return FormattedText(parts)
 
     kb = KeyBindings()
@@ -215,10 +215,10 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
     def _cancel(e):
         e.app.exit(result=None)
 
-    rows = [Window(FormattedTextControl(FormattedText([("class:title", f" {title}\n")])), height=2)]
-    rows += [VSplit([label(f), areas[f.key]]) for f in fields]
+    rows = [VSplit([label(f), areas[f.key]]) for f in fields]
     rows.append(Window(FormattedTextControl(hint), dont_extend_height=True))
+    body = Frame(HSplit(rows), title=title, style="class:frame.border")   # a frame means "needs you"
     first = order[0]      # top to bottom, as the eye reads it
-    app = Application(layout=Layout(HSplit(rows), focused_element=first), key_bindings=kb, style=STYLE,
+    app = Application(layout=Layout(body, focused_element=first), key_bindings=kb, style=STYLE,
                       full_screen=False, erase_when_done=True)
     return await app.run_async()

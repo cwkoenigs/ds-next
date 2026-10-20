@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/industry-20b42b7a-f85d-4d6b-bae7-3d129efb1dae/styles.css">
+<script src="_ds/industry-20b42b7a-f85d-4d6b-bae7-3d129efb1dae/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#f2f2f3;font-family:"Barlow",system-ui,sans-serif;color:#1d1f20}a{color:#416180}a:hover{color:#2c455d}.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(29,31,32,.12);scroll-margin-top:16px}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1d1f20;color:#f2f2f3;text-decoration:none}.dv-tname{font:600 15px/1.2 "Barlow Condensed",system-ui,sans-serif;color:#1d1f20;letter-spacing:.02em;text-transform:uppercase}.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(29,31,32,.08);color:#1d1f20;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 "Barlow",system-ui,sans-serif;color:#5d5d60}.dv-opt:target .dv-oid{background:#5980a6;color:#fff}.dv-next{margin:22px 0 0;font:12px/1.5 "Barlow",system-ui,sans-serif;color:#5d5d60}
+.t{background:#1e1e1e;color:#cccccc;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12.5px;line-height:19px;white-space:pre;padding:14px 18px;width:720px;box-sizing:border-box;--cy:#11a8cd;--bcy:#29b8db;--mg:#bc3fbc;--gr:#0dbc79;--ye:#e5e510;--re:#cd3131;--dm:#7a7a7a;--rev-bg:#cccccc;--rev-fg:#1e1e1e}
+.t.light{background:#ffffff;color:#333333;--cy:#0598bc;--bcy:#0598bc;--mg:#bc05bc;--gr:#00a000;--ye:#8a8a00;--re:#cd3131;--dm:#8a8a8a;--rev-bg:#333333;--rev-fg:#ffffff}
+.cy{color:var(--cy)}.bcy{color:var(--bcy);font-weight:700}.mg{color:var(--mg)}.gr{color:var(--gr)}.ye{color:var(--ye)}.re{color:var(--re)}.dm{color:var(--dm)}.b{font-weight:700}.u{text-decoration:underline}.rev{background:var(--rev-bg);color:var(--rev-fg)}.cur{background:#cccccc;color:#1e1e1e}
+.note{font:400 12px/1.5 "Barlow",system-ui,sans-serif;color:#5d5d60;max-width:720px;margin:0}
+</style></helmet>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Baseline — the terminal as it runs today</span><span style="font:12px/1.4 'Barlow',sans-serif;color:#5d5d60">Recreated from ui.py, widgets.py, cli.py · Rich + prompt_toolkit · plain ANSI colours (shown on VS Code's default dark and light palettes)</span></div>
+<p class="note" style="margin-bottom:22px">Vocabulary in code: magenta box for the banner · cyan ◆ for what the agent says · cyan → for what it runs · dim │ for output · green ✓ · yellow ⚠ · red ✗ · bold-cyan › prompt. Widgets (picker, form) draw below the prompt and erase themselves when done.</p>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a"><div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Banner, prompt, bottom toolbar — <code>Repl.banner()</code>, <code>_toolbar()</code></div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t"><span class="mg">╭────────────────────────────────────────────────────────────────╮</span>
+<span class="mg">│</span>  <span class="b">▼ ds-next</span><span class="dm">  v0.1.0</span>                                           <span class="mg">│</span>
+<span class="mg">│</span>                                                                <span class="mg">│</span>
+<span class="mg">│</span>  Start, check and grow projects from the team's canon.         <span class="mg">│</span>
+<span class="mg">│</span>                                                                <span class="mg">│</span>
+<span class="mg">│</span>  <span class="dm">/new starts a project · /help lists commands · /exit leaves</span>   <span class="mg">│</span>
+<span class="mg">│</span>                                                                <span class="mg">│</span>
+<span class="mg">│</span>  <span class="dm">cwd:    ~/Developer/order-metrics</span>                             <span class="mg">│</span>
+<span class="mg">│</span>  <span class="dm">canon:  16 standards, 2 project types at ~/Developer/canon</span>    <span class="mg">│</span>
+<span class="mg">│</span>  <span class="dm">skills: 5 from skills-os · docs-ds found</span>                      <span class="mg">│</span>
+<span class="mg">╰────────────────────────────────────────────────────────────────╯</span>
+
+<span class="bcy">›</span> <span class="cur"> </span>
+<span class="dm">  Type a message, or / for commands. /new starts a project.</span>
+
+
+
+
+<span class="rev">  <span class="b">order-metrics</span> · order-metrics: 16 adopted, 0 declined, 0 pending, 0 errors · model auto · effort low · idle   </span></div></div></div>
+
+<div class="dv-opt" id="1b"><div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Slash completion + picker — <code>SlashCompleter</code>, <code>widgets.pick()</code></div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t"><span class="bcy">›</span> /new py<span class="cur"> </span>
+       <span class="rev"> python     …                                      </span>
+       <span style="background:#3a3a3a"> python-package  Python library package             </span>
+
+<span class="bcy">›</span> /
+       <span class="rev"> /new       start a project from a canon scaffold: /new, /new py </span>
+       <span style="background:#3a3a3a"> /canon     list standards, or /canon &lt;id&gt; to read one           </span>
+       <span style="background:#3a3a3a"> /skills    list skills-os procedures, or /skills &lt;name&gt; to read  </span>
+       <span style="background:#3a3a3a"> /status    reconcile this repo against the canon                 </span>
+       <span style="background:#3a3a3a"> /docs      render this repo (or the whole knowledge base) with d </span>
+
+<span class="bcy"> ◆ Which scaffold?</span>
+
+<span class="bcy"> ❯ 1. python › cli</span><span class="dm">  Python command-line tool · v1</span>
+   2. python › package<span class="dm">  Python library package · v1</span>
+
+<span class="dm"> ↑↓ move · Enter choose · Esc cancel</span></div></div></div>
+
+<div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>/new form, live validation — <code>widgets.form()</code>, <code>cmd_new</code></div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t"><span class="bcy">›</span> /new python cli order-metrics
+
+<span class="bcy"> ◆ New project from the canon · fill in, check, Enter</span>
+
+<span class="dm">   type         </span>‹ Python command-line tool · outputs: console script ›
+<span class="dm">   name        *</span> order-metrics
+<span class="bcy"> ❯ purpose     *</span> <span class="cur"> </span>
+<span class="dm">   owner        </span> cwkoenigs
+<span class="dm">   e.g. Weekly feed use per barn, for the barn managers · one line: what it does and for whom</span>
+<span class="bcy">   16 standards apply · v1 · tags python, package, cli</span>
+<span class="dm">   Tab/↓ next · ↑ back · Enter submit · Esc cancel</span>
+
+
+<span class="dm">   type         </span>‹ Python command-line tool · outputs: console script ›
+<span class="bcy"> ❯ name        *</span> Order Metrics<span class="cur"> </span>
+<span class="dm">   purpose     *</span> Pull daily order metrics from Snowflake for the finance team
+<span class="dm">   owner        </span> cwkoenigs
+<span class="dm">   e.g. feed-model · lowercase letters, digits and dashes, 3–40 characters</span>
+<span class="bcy">   16 standards apply · v1 · tags python, package, cli</span>
+<span class="re">   order-metrics/ already exists here</span>
+<span class="dm">   Tab/↓ next · ↑ back · Enter submit · Esc cancel</span></div></div></div>
+
+<div class="dv-opt" id="1d"><div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Agent turn — <code>render()</code>, <code>turn()</code> status line, result footer</div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t"><span class="gr">✓</span> <span class="b">Scaffold python-cli</span><span class="dm"> v1 · Python command-line tool</span>
+<span class="bcy">◆</span> <span class="dm">name      </span>order-metrics
+  <span class="dm">purpose   </span>Pull daily order metrics from Snowflake for the finance team
+  <span class="dm">owner     </span>cwkoenigs
+  <span class="cy">16 standards apply · v1 · tags python, package, cli</span>
+
+<span class="cy">⠹</span> <span class="cy">→</span> Running scaffold_get… <span class="dm">4s · ctrl-c to interrupt</span>
+
+<span class="bcy">◆</span> Looking at the draft against the canon. The purpose names a consumer
+  and a source, and the name follows the rule. Nothing to change.
+<span class="cy">→</span> <span class="b">scaffold_get</span>(python-cli)
+<span class="dm">  │ # python-cli v1 … +42 lines</span>
+<span class="cy">→</span> <span class="b">scaffold_project</span>(order-metrics)
+<span class="dm">  │ created ~/Developer/order-metrics from python-cli v1 … +3 lines</span>
+<span class="bcy">◆</span> Created <span class="b">order-metrics</span>. Sixteen standards are adopted in
+  <code>.ds/manifest.toml</code>; run /status any time to check them.
+<span class="dm">  3 turns · 15.2s</span>
+
+<span class="bcy">›</span> <span class="cur"> </span></div></div></div>
+
+<div class="dv-opt" id="1e"><div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Permission approval — <code>_prompt_approval()</code>, <code>Approver</code> (changed-from-form case)</div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t"><span class="cy">→</span> <span class="b">Bash</span>(uv run pytest -q)
+<span class="ye">╭─ </span><span class="b">Bash</span><span class="ye"> ─────────────────────────────────────────╮</span>
+<span class="ye">│</span> uv run pytest -q                                <span class="ye">│</span>
+<span class="ye">╰─────────────────────────────────────────────────╯</span>
+  Allow? <span class="b">y</span>es · <span class="b">a</span>lways this session · <span class="b">n</span>o › y<span class="cur"> </span>
+
+<span class="cy">→</span> <span class="b">scaffold_project</span>(order-metrics)
+<span class="ye">╭─ </span><span class="b">scaffold_project</span><span class="ye"> ──────────────────────────────────────────────────╮</span>
+<span class="ye">│</span> Changed from your form:                                              <span class="ye">│</span>
+<span class="ye">│</span>   purpose: 'Pull daily order metrics from Snowflake for the finance  <span class="ye">│</span>
+<span class="ye">│</span>   team' → 'Daily order metrics from Snowflake, for finance'          <span class="ye">│</span>
+<span class="ye">│</span>                                                                      <span class="ye">│</span>
+<span class="ye">│</span> {"scaffold": "python-cli", "scaffold_version": 1, "name":            <span class="ye">│</span>
+<span class="ye">│</span> "order-metrics", "purpose": "Daily order metrics from Snowflake,     <span class="ye">│</span>
+<span class="ye">│</span> for finance", "owner": "cwkoenigs"}                                  <span class="ye">│</span>
+<span class="ye">╰──────────────────────────────────────────────────────────────────────╯</span>
+  Allow? <span class="b">y</span>es · <span class="b">a</span>lways this session · <span class="b">n</span>o › <span class="cur"> </span></div></div></div>
+
+<div class="dv-opt" id="1f"><div class="dv-olabel"><a class="dv-oid" href="#1f">1f</a>/status, /captures, /docs — <code>cmd_status</code>, <code>cmd_captures</code>, <code>cmd_docs</code></div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t"><span class="bcy">›</span> /status
+
+<span class="ye">⚠</span> <span class="b">order-metrics: 14 adopted, 1 declined, 1 pending, 0 errors</span>
+<span class="ye">  │ pending llm-agents</span>
+<span class="dm">  │ declined compliance-rubric: no regulated data in this repo (past revisit)</span>
+
+<span class="bcy">›</span> /status
+
+<span class="re">✗</span> <span class="b">order-metrics: 16 adopted, 0 declined, 0 pending, 2 errors</span>
+<span class="re">  │ AGENTS.md: [[securty]] is not a standard in the canon</span>
+<span class="re">  │ .ds/manifest.toml: adopted standard 'cicd' has no version</span>
+
+<span class="bcy">›</span> /captures
+
+<span class="cy">  .ds/captures/2026-10-16-mcp-2-removed-decorators.md</span>
+<span class="cy">  .ds/captures/2026-10-17-cortex-drops-is-error.md</span>
+
+<span class="bcy">›</span> /docs
+
+<span class="cy">⠸ →</span> Building with docs-ds…
+<span class="gr">◆</span> Serving <span class="b">order-metrics</span> at <span class="cy u">http://127.0.0.1:51823/</span></div></div></div>
+
+<div class="dv-opt" id="1g"><div class="dv-olabel"><a class="dv-oid" href="#1g">1g</a>/help, /canon, /skills tables — <code>cmd_help</code>, <code>cmd_canon</code>, <code>cmd_skills</code></div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t"><span class="bcy">›</span> /help
+
+<span class="cy">  /new          </span>  start a project from a canon scaffold: /new, /new python, /new python cli &lt;name&gt;
+<span class="cy">  /canon        </span>  list standards, or /canon &lt;id&gt; to read one
+<span class="cy">  /skills       </span>  list skills-os procedures, or /skills &lt;name&gt; to read one
+<span class="cy">  /status       </span>  reconcile this repo against the canon
+<span class="cy">  /docs         </span>  render this repo (or the whole knowledge base) with docs-ds and serve it
+<span class="cy">  /captures     </span>  list drafts waiting to be proposed to the canon
+<span class="cy">  /model        </span>  show or set the Cortex model
+<span class="cy">  /effort       </span>  show or set thinking effort: minimal, low, medium, high
+<span class="cy">  /clear        </span>  start a fresh session
+<span class="cy">  /help         </span>  this list
+<span class="cy">  /exit         </span>  leave
+<span class="cy">  /&lt;skill&gt;      </span>  run a skills-os skill, e.g. /so-best-practice-audit
+<span class="cy">  anything else </span>  goes to Cortex Code, with the knowledge base as tools
+
+<span class="bcy">›</span> /canon python,cli
+
+<span class="dm">  id                 v  applies to            status    title</span>
+<span class="cy">  adr-000            </span>1  python,package,cli    accepted  Record decisions as ADRs
+<span class="cy">  architecture       </span>2  python,package        accepted  Src layout and module boundaries
+<span class="cy">  cicd               </span>1  python,package,cli    accepted  GitLab CI with test, lint and reconcile
+<span class="cy">  error-handling     </span>1  python                accepted  Errors are values the caller can act on
+<span class="cy">  testing            </span>3  python,package,cli    accepted  One passing test from day one
+
+<span class="bcy">›</span> /skills
+
+<span class="cy">  /so-build-feature-interview </span>  Turn a feature request on an existing app into a reviewed, phased…
+<span class="cy">  /so-bug-review-interview    </span>  Turn a bug report into a reproduced, root-caused, phased fix plan…
+<span class="cy">  /so-capture                 </span>  Capture problems, discoveries, decisions and gotchas from a coding…</div></div></div>
+
+<div class="dv-opt" id="1h"><div class="dv-olabel"><a class="dv-oid" href="#1h">1h</a>Non-interactive subcommands — <code>cli.py</code> (markup off, no colour except red)</div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t"><span class="dm">$</span> ds-next reconcile
+order-metrics: 14 adopted, 1 declined, 1 pending, 0 errors
+  outputs  console script  (declared by the python-cli type; publishing is not tracked yet)
+  pending  llm-agents
+  declined compliance-rubric: no regulated data in this repo
+
+<span class="dm">$</span> ds-next reconcile --quiet
+ds: 1 standard(s) pending (llm-agents). Open ds-next and run /status.
+
+<span class="dm">$</span> ds-next reconcile ~/Developer/old-repo
+<span class="re">  error    AGENTS.md: [[securty]] is not a standard in the canon</span>
+
+<span class="dm">$</span> ds-next canon list --tags python,cli
+adr-000                v1  Record decisions as ADRs
+cicd                   v1  GitLab CI with test, lint and reconcile
+testing                v3  One passing test from day one
+
+<span class="dm">$</span> ds-next new order-metrics --answers answers.toml
+<span class="re">not created: order-metrics/ already exists</span></div></div></div>
+
+<div class="dv-opt" id="1i"><div class="dv-olabel"><a class="dv-oid" href="#1i">1i</a>Errors, interrupts, hints — <code>handle()</code>, <code>run()</code>, <code>turn()</code></div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t"><span class="bcy">›</span> /nwe
+<span class="re">Unknown command /nwe. /help lists them.</span>
+
+<span class="bcy">›</span> /effort turbo
+<span class="re">effort is one of minimal, low, medium, high, xhigh, max</span>
+
+<span class="bcy">›</span> ^C
+<span class="dm">  ctrl-c again to leave, or /exit</span>
+
+<span class="cy">→</span> <span class="b">Bash</span>(uv run pytest -q)
+<span class="re">  ✗ ERROR: 2 failed, 11 passed in 1.42s … +38 lines</span>
+<span class="re">  │ Interrupted by user</span>
+
+<span class="bcy">›</span> <span class="cur"> </span>
+<span class="dm">  │ (Enter) keep my answers as they are and continue</span>
+
+<span class="dm">  │ cancelled</span>
+
+<span class="re">Cortex Code: connection closed by peer</span>
+<span class="ye">  │ turn stalled: no message for 90s</span>
+<span class="re">  ✗ error_max_turns: </span>
+<span class="dm">  12 turns · 184.0s · $0.0412</span></div></div></div>
+
+<div class="dv-opt" id="1j"><div class="dv-olabel"><a class="dv-oid" href="#1j">1j</a>Same turn on a light terminal theme — ANSI follows the user's palette</div>
+<div class="blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="t light"><span class="gr">✓</span> <span class="b">Scaffold python-cli</span><span class="dm"> v1 · Python command-line tool</span>
+<span class="bcy">◆</span> <span class="dm">name      </span>order-metrics
+  <span class="dm">purpose   </span>Pull daily order metrics from Snowflake for the finance team
+  <span class="dm">owner     </span>cwkoenigs
+  <span class="cy">16 standards apply · v1 · tags python, package, cli</span>
+
+<span class="bcy">◆</span> Looking at the draft against the canon. Nothing to change.
+<span class="cy">→</span> <span class="b">scaffold_get</span>(python-cli)
+<span class="dm">  │ # python-cli v1 … +42 lines</span>
+<span class="cy">→</span> <span class="b">scaffold_project</span>(order-metrics)
+<span class="dm">  │ created ~/Developer/order-metrics from python-cli v1 … +3 lines</span>
+<span class="bcy">◆</span> Created <span class="b">order-metrics</span>. Run /status any time to check it.
+<span class="dm">  3 turns · 15.2s</span>
+
+<span class="bcy">›</span> <span style="background:#333;color:#fff"> </span>
+<span style="background:#333333;color:#ffffff">  <span class="b">order-metrics</span> · order-metrics: 16 adopted, 0 declined, 0 pending, 0 errors · model auto · effort low · idle   </span></div></div></div>
+
+</div>
+<p class="dv-next">Observed: three glyph families compete (◆ → │ in turns, ❯ ‹› in widgets, box panels for banner/approval); the toolbar repeats the repo name; result lines truncate to one line with no way to open them; the form's label column (17 cols) and the turn's indent (2 cols) don't align. The design system in <a href="ds-next Terminal Design System.dc.html">ds-next Terminal Design System</a> starts from these.</p>
+</section>
+</x-dc>
+</body>
+</html>
