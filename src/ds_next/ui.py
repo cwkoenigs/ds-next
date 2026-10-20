@@ -301,7 +301,6 @@ class Repl:
             complete_while_typing=True,
             bottom_toolbar=self._toolbar,
             style=Style.from_dict(S.pt_style()),
-            reserve_space_for_menu=8,
         )
 
     # -- chrome
@@ -647,12 +646,9 @@ class Repl:
             while True:
                 self._refresh_where()
                 try:
-                    cols = S.width(self.console)
-                    tag = " New session " if self.turn_no == 0 else f" #{self.turn_no + 1} "
-                    top = "┌" + "─" * (cols - 3 - len(tag))
-                    line = await self.session.prompt_async([
-                        ("class:rule", top), ("class:band", tag), ("class:rule", "─┐\n"),
-                        ("class:rule", "│ "), ("class:prompt", G.prompt + " ")])
+                    self.console.print(S.session_rule("New session" if self.turn_no == 0 else f"#{self.turn_no + 1}",
+                                                      S.width(self.console)))
+                    line = await self.session.prompt_async([("class:rule", "│ "), ("class:prompt", G.prompt + " ")])
                 except KeyboardInterrupt:
                     # the Claude Code habit: one ctrl-c clears the line, a second within two seconds leaves
                     now = time.monotonic()

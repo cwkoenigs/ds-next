@@ -227,12 +227,12 @@ def banner(version: str, facts: list[tuple[str, str]], hints: list[str], path: s
     """Two-pane frame shown once: word-mark left, facts right, path on a footer row."""
     li = 30
     ri = w - 3 - li
-    title = Text.assemble(("ds-next", "brand bold"), (f" {version}", "dim"))
-    e = "dim"
+    title = Text.assemble(("ds-next", "strong"), (f" {version}", "accent"))
+    e = "muted"            # the one decorative frame: a visible edge, a bright title, as Cortex draws it
     out = [Text.assemble(("┌─ ", e), title, (" " + "─" * (li - 3 - title.cell_len) + "┬" + "─" * ri + "┐", e))]
-    left: list[Text] = [Text(), Text(), Text.assemble("  ", ("ds-next", "brand bold")), Text("  " + tagline, style="muted")]
-    right: list[Text] = [Text()] + [Text.assemble(("  " + f"{k:<{LABEL_W}} ", "dim"), v) for k, v in facts] + [Text()]
-    right += [Text("  " + h, style="dim") for h in hints]
+    left: list[Text] = [Text(), Text(), Text.assemble("  ", ("ds-next", "strong")), Text("  " + tagline, style="accent")]
+    right: list[Text] = [Text()] + [Text.assemble(("  " + f"{k:<{LABEL_W}} ", "accent"), v) for k, v in facts] + [Text()]
+    right += [Text("  " + h, style="muted") for h in hints]
     for i in range(max(len(left), len(right))):
         l_ = (left[i] if i < len(left) else Text()).copy()
         r_ = (right[i] if i < len(right) else Text()).copy()
@@ -244,6 +244,13 @@ def banner(version: str, facts: list[tuple[str, str]], hints: list[str], path: s
     out.append(Text.assemble(("│", e), " " * lp, (path, "muted"), " " * (w - 2 - lp - len(path)), ("│", e)))
     out.append(Text("└" + "─" * (w - 2) + "┘", style=e))
     return out
+
+
+def session_rule(tag: str, w: int = DESIGN_WIDTH) -> Text:
+    """The rule above the prompt with the session tag on it, printed once per prompt (static:
+    prompt_toolkit redraws a multi-line prompt message badly, so the prompt itself stays one line)."""
+    tag = f" {tag} "
+    return Text.assemble(("┌" + "─" * (w - 3 - len(tag)), "rule"), (tag, "band"), ("─┐", "rule"))
 
 
 def toolbar(left: str, right: str, w: int) -> list[tuple[str, str]]:
