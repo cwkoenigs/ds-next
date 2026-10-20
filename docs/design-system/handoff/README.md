@@ -1,4 +1,10 @@
-# handoff/ds_next — drop-in files
+# handoff — code + design pages
+
+`design-system/` holds the current exports of the three design pages (open with `support.js` beside
+them, or just drop the folder into `docs/design-system/`). They include the 2a–2d mark options and
+the mascot in the 1a banner. `ds_next/` is the code that matches them.
+
+## ds_next — drop-in files
 
 Four complete files that replace `src/ds_next/{ui,widgets,cli}.py` and add `ui_style.py`.
 They implement every screen in `ds-next Screens.dc.html` (1a–1h): framed two-pane banner with the
@@ -9,6 +15,9 @@ approval frame with − / + diff, /status · /canon · /help columns, plain CI o
 
 Behaviour is unchanged: same commands, same Approver rules, same form validation, same exit codes.
 Additions: `/last` (full output of the last tool call), `#n` turn numbers, `DS_THEME=light`.
+
+`pt_style()` now translates Rich syntax to prompt_toolkit (`on #hex` → `bg:#hex`, ANSI names →
+`ansi*`) via `_pt()`, so the live copy and this one can be the same file.
 
 Check after copying:
 

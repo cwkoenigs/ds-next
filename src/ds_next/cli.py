@@ -233,7 +233,3 @@ def mcp() -> None:
 
 if __name__ == "__main__":
     sys.exit(app())
-
-
-if __name__ == "__main__":
-    sys.exit(app())

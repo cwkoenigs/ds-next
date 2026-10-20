@@ -60,10 +60,32 @@ def console(*, color: bool = True, **kw) -> Console:
     return Console(theme=theme(color=color), highlight=False, **kw)
 
 
+_ANSI = {"default": "", "black": "ansiblack", "red": "ansired", "green": "ansigreen", "yellow": "ansiyellow",
+         "blue": "ansiblue", "magenta": "ansimagenta", "cyan": "ansicyan", "white": "ansiwhite",
+         "bright_black": "ansibrightblack", "dim": ""}
+
+
+def _pt(style: str) -> str:
+    """Rich style syntax → prompt_toolkit: `bold #1d1f20 on #749dc4` → `bold #1d1f20 bg:#749dc4`,
+    `on blue` → `bg:ansiblue`, `reverse` kept."""
+    out, toks = [], style.split()
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if t == "on" and i + 1 < len(toks):
+            c = toks[i + 1]
+            out.append("bg:" + (c if c.startswith("#") else _ANSI.get(c, c)))
+            i += 2
+            continue
+        out.append(t if t.startswith("#") or t in ("bold", "italic", "underline", "reverse") else _ANSI.get(t, t))
+        i += 1
+    return " ".join(x for x in out if x)
+
+
 def pt_style() -> dict[str, str]:
-    """The same roles for prompt_toolkit (prompt, completion menu, widgets)."""
+    """The same roles for prompt_toolkit (prompt, completion menu, widgets), translated."""
     dark, tc = is_dark(), truecolor()
-    col = {r: (v[0] if dark else v[1]) if tc else v[2] for r, v in PALETTE.items()}
+    col = {r: _pt((v[0] if dark else v[1]) if tc else v[2]) for r, v in PALETTE.items()}
     bg, fg, sf = ("#1d1f20", "#e7e7ea", "#2b2b2d") if dark else ("#f2f2f3", "#1d1f20", "#e9e9ea")
     return {
         "prompt": col["strong"], "rule": col["rule"], "band": col["band"], "key": col["key"],
