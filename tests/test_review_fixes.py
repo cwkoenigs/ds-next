@@ -503,6 +503,7 @@ def test_only_links_to_the_root_readme_are_redirected(tmp_path, canon, skills):
 
 # -- seventh Codex review, 2026-10-16
 
+@pytest.mark.skipif(not (Path.home() / "Developer" / "docs-ds" / "node_modules").is_dir(), reason="needs docs-ds")
 def test_docs_never_build_over_a_repo_or_other_files(tmp_path, canon, skills, monkeypatch):
     from ds_next import docs
     scaffold.write(scaffold.Answers(**ANSWERS), tmp_path / "demo-cli", canon, skills)
