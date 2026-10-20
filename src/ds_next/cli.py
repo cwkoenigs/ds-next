@@ -148,6 +148,17 @@ def docs(output: Path = typer.Option(None, "--out", help="build directory (defau
 
 
 @app.command()
+def setup(check: bool = typer.Option(False, "--check", help="report what would change; write nothing")):
+    """Connect this machine's Cortex Code to the knowledge system: the ds MCP server, the /ds-new
+    skill, and read-only ds tools allowed without prompting. Safe to rerun."""
+    from . import setup as setup_mod
+
+    ok = setup_mod.setup_cortex(check, lambda line: out.print(f"  {line}"))
+    out.print("Restart Cortex Code to pick this up." if not check else "")
+    raise typer.Exit(0 if ok else 1)
+
+
+@app.command()
 def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from a file"),
         yes: bool = typer.Option(False, "--yes", help="allow ds write tools (scaffold, block_add, code_add, capture)"),
         yes_all: bool = typer.Option(False, "--yes-all", help="allow every tool, Bash and file edits included: "
