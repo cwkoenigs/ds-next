@@ -16,10 +16,10 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import TextArea
 
-ACCENT = "#d97757"
+# updater's look: plain terminal colours, cyan for what is active, so it follows the user's theme
 STYLE = Style.from_dict({
-    "accent": f"{ACCENT} bold", "dim": "#808080", "error": "#e06c75", "label": "#a0a0a0",
-    "focus": f"{ACCENT} bold", "field": "", "title": "bold",
+    "accent": "ansicyan bold", "dim": "ansibrightblack", "error": "ansired", "label": "ansibrightblack",
+    "focus": "ansicyan bold", "field": "", "title": "ansicyan bold",
 })
 
 
@@ -55,7 +55,7 @@ async def pick(title: str, options: list[tuple[str, str, str]]) -> str | None:
             e.app.exit(result=options[n - 1][0])
 
     def text():
-        out = [("class:title", f" {title}\n\n")]
+        out = [("class:title", f" ◆ {title}\n\n")]
         for i, (_, label, desc) in enumerate(options):
             on = i == state["i"]
             out += [("class:accent" if on else "", f" {'❯' if on else ' '} {i + 1}. {label}"),
@@ -215,7 +215,7 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
     def _cancel(e):
         e.app.exit(result=None)
 
-    rows = [Window(FormattedTextControl(FormattedText([("class:title", f" {title}\n")])), height=2)]
+    rows = [Window(FormattedTextControl(FormattedText([("class:title", f" ◆ {title}\n")])), height=2)]
     rows += [VSplit([label(f), areas[f.key]]) for f in fields]
     rows.append(Window(FormattedTextControl(hint), dont_extend_height=True))
     first = order[0]      # top to bottom, as the eye reads it

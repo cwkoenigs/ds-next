@@ -48,8 +48,16 @@ from .agent import SERVER, Agent, TurnStalled
 from .kb import Canon, Scaffold, Skills, docs_shell_path
 from .widgets import Field, form, pick
 
-ACCENT = "#d97757"        # the Claude Code orange
-DIM = "grey50"
+# The look is updater's (Hermes style, plain terminal colours so it follows the user's theme):
+# a magenta box for the banner, cyan ◆ for what the agent says and → for what it runs, dim │ for
+# output, green ✓, yellow ⚠, red ✗.
+BRAND = "bold magenta"
+ACCENT = "cyan"
+HEAD = "bold cyan"
+OK = "green"
+WARN = "yellow"
+ERR = "red"
+DIM = "dim"
 COMMANDS = {
     "/new": "start a project from a canon scaffold: /new, /new python, /new python cli <name>",
     "/canon": "list standards, or /canon <id> to read one",
@@ -97,11 +105,11 @@ def _tilde(p: Path, width: int = 60) -> str:
     return s if len(s) <= width else "…" + s[-(width - 1):]
 
 
-def _bullet(body, style: str = "white") -> Table:
+def _bullet(body, glyph: str = "◆", style: str = HEAD) -> Table:
     t = Table.grid(padding=(0, 1))
     t.add_column(width=1, no_wrap=True)
     t.add_column()
-    t.add_row(Text("⏺", style=style), body)
+    t.add_row(Text(glyph, style=style), body)
     return t
 
 
@@ -128,7 +136,7 @@ def render(console: Console, msg: Any, state: dict) -> None:
                 arg = _arg_summary(b.input)
                 if arg:
                     head.append(f"({arg})")
-                console.print(_bullet(head, style="green"))
+                console.print(_bullet(head, "→", ACCENT))
     elif isinstance(msg, UserMessage) and isinstance(msg.content, list):
         for b in msg.content:
             if isinstance(b, ToolResultBlock):
@@ -136,8 +144,8 @@ def render(console: Console, msg: Any, state: dict) -> None:
                 text = _result_text(b)
                 lines = text.splitlines() or ["(no output)"]
                 more = f" … +{len(lines) - 1} lines" if len(lines) > 1 else ""
-                style = "red" if b.is_error or text.startswith("ERROR:") else DIM
-                console.print(Text(f"  ⎿  {lines[0][:100]}{more}", style=style))
+                bad = b.is_error or text.startswith("ERROR:")
+                console.print(Text(f"  {'✗' if bad else '│'} {lines[0][:100]}{more}", style=ERR if bad else DIM))
     elif isinstance(msg, SystemMessage) and msg.subtype == "init":
         state["model"] = msg.data.get("model")
     elif isinstance(msg, ResultMessage):
@@ -146,7 +154,7 @@ def render(console: Console, msg: Any, state: dict) -> None:
         if msg.total_cost_usd:
             parts.append(f"${msg.total_cost_usd:.4f}")
         if msg.is_error or msg.subtype != "success":
-            console.print(Text(f"  ⎿  {msg.subtype}: {'; '.join(msg.errors or [])}", style="red"))
+            console.print(Text(f"  ✗ {msg.subtype}: {'; '.join(msg.errors or [])}", style=ERR))
         console.print(Text("  " + " · ".join(parts), style=DIM))
 
 
@@ -294,17 +302,17 @@ class Repl:
     def banner(self) -> None:
         shell = "found" if docs_shell_path() else "not found"
         body = Group(
-            Text.assemble(("✻ ", ACCENT), ("Welcome to ", "bold"), ("ds-next", f"bold {ACCENT}"),
-                          (f" v{__version__}", DIM)),
+            Text("The team's knowledge system: start, check and grow projects from the canon."),
             Text(""),
-            Text("  /new to start a project · /help for commands · ctrl-c twice (or /exit) leaves", style=DIM),
+            Text("/new to start a project · /help for commands · ctrl-c twice (or /exit) leaves", style=DIM),
             Text(""),
-            Text(f"  cwd:    {_tilde(self.cwd)}", style=DIM),
-            Text(f"  canon:  {len(self.canon.standards)} standards, {len(self.canon.scaffolds)} scaffolds "
+            Text(f"cwd:    {_tilde(self.cwd)}", style=DIM),
+            Text(f"canon:  {len(self.canon.standards)} standards, {len(self.canon.scaffolds)} project types "
                  f"at {_tilde(self.canon.root)}", style=DIM),
-            Text(f"  skills: {len(self.skills.all)} from skills-os · docs-ds {shell}", style=DIM),
+            Text(f"skills: {len(self.skills.all)} from skills-os · docs-ds {shell}", style=DIM),
         )
-        self.console.print(Panel(body, border_style=ACCENT, expand=False, padding=(0, 2)))
+        self.console.print(Panel(body, title=f"[bold]▼ ds-next[/bold] [dim]v{__version__}[/dim]", title_align="left",
+                                 border_style=BRAND, expand=False, padding=(0, 2), width=64))
         self.console.print()
 
     def _refresh_where(self) -> None:
@@ -381,15 +389,15 @@ class Repl:
             self.console.print(Text("Not a ds repo. /new creates one.", style=DIM))
             return
         r = reconcile.check(repo, self.canon)
-        style = "green" if r.ok and not r.pending else ("yellow" if r.ok else "red")
-        self.console.print(_bullet(Text(r.summary(), style="bold"), style=style))
+        glyph, style = ("✓", OK) if r.ok and not r.pending else (("⚠", WARN) if r.ok else ("✗", ERR))
+        self.console.print(_bullet(Text(r.summary(), style="bold"), glyph, style))
         for p in r.pending:
-            self.console.print(Text(f"  ⎿  pending {p}", style="yellow"))
+            self.console.print(Text(f"  │ pending {p}", style=WARN))
         for sid, why in r.declined.items():
-            self.console.print(Text(f"  ⎿  declined {sid}: {why}" + (" (past revisit)" if sid in r.overdue else ""),
+            self.console.print(Text(f"  │ declined {sid}: {why}" + (" (past revisit)" if sid in r.overdue else ""),
                                     style=DIM))
         for e in r.errors:
-            self.console.print(Text(f"  ⎿  {e}", style="red"))
+            self.console.print(Text(f"  │ {e}", style=ERR))
 
     def cmd_captures(self, _: str) -> None:
         base = reconcile.find_repo(self.cwd) or self.cwd
@@ -402,15 +410,15 @@ class Repl:
     def cmd_docs(self, _: str) -> None:
         repo = reconcile.find_repo(self.cwd)
         stage = Path(tempfile.mkdtemp(prefix="ds-next-docs-"))
-        with self.console.status(f"[{ACCENT}]✻[/] Building with docs-ds…", spinner="dots"):
+        with self.console.status(f"[{ACCENT}]→[/] Building with docs-ds…", spinner="dots"):
             content, title = docs.stage(stage, self.canon, self.skills, repo)
             try:
                 r = docs.build(content, title, stage / "site", protect=[repo] if repo else [])
             except (ValueError, FileNotFoundError) as e:
-                self.console.print(Text(str(e), style="red"))
+                self.console.print(Text(str(e), style=ERR))
                 return
         if r.returncode != 0:
-            self.console.print(Text((r.stdout + r.stderr)[-1500:], style="red"))
+            self.console.print(Text((r.stdout + r.stderr)[-1500:], style=ERR))
             return
         if self._server:
             self._server.shutdown()
@@ -421,7 +429,7 @@ class Repl:
         port = self._server.server_address[1]
         self.console.print(_bullet(Text.assemble(("Serving ", ""), (title, "bold"), " at ",
                                                  (f"http://127.0.0.1:{port}/", f"underline {ACCENT}")),
-                                   style="green"))
+                                   style=OK))
 
     def _choose_scaffold(self, words: list[str]) -> tuple[list[Scaffold], list[str]]:
         """Scaffolds whose menu path starts with the typed words, and the words left over."""
@@ -437,7 +445,7 @@ class Repl:
     async def cmd_new(self, arg: str) -> None:
         candidates, rest = self._choose_scaffold(arg.split())
         if not candidates:
-            self.console.print(Text("The canon has no accepted scaffold for that. /new alone lists them.", style="red"))
+            self.console.print(Text("The canon has no accepted scaffold for that. /new alone lists them.", style=ERR))
             return
         by_id = {c.id: c for c in candidates}
         name = rest[0] if rest and scaffold.NAME_RE.match(rest[0]) else ""
@@ -480,11 +488,11 @@ class Repl:
 
         v = await form("New project from the canon · fill in, check, Enter", fields, footer, validate)
         if v is None:
-            self.console.print(Text("  ⎿  cancelled", style=DIM))
+            self.console.print(Text("  │ cancelled", style=DIM))
             return
         sc = by_id[v["type"]]
         self.console.print(_bullet(Text.assemble(("Scaffold ", ""), (sc.id, "bold"), (f" v{sc.version} · {sc.title}", DIM)),
-                                   style="green"))
+                                   "✓", OK))
         a = answers(v).resolve(self.canon)
         draft = {"scaffold": sc.id, "name": a.name, "purpose": a.purpose, "owner": a.owner}
         shown = Text()
@@ -501,7 +509,7 @@ class Repl:
     async def cmd_effort(self, arg: str) -> None:
         if arg:
             if arg not in ("minimal", "low", "medium", "high", "xhigh", "max"):
-                self.console.print(Text("effort is one of minimal, low, medium, high, xhigh, max", style="red"))
+                self.console.print(Text("effort is one of minimal, low, medium, high, xhigh, max", style=ERR))
                 return
             await self.agent.set_effort(arg)
         self.console.print(Text(f"effort: {self.agent.effort or 'default'}", style=DIM))
@@ -536,7 +544,7 @@ class Repl:
 
         def label() -> str:
             secs = int(time.monotonic() - started)
-            return f"[{ACCENT}]✻[/] {self.state['step']}… [{DIM}]{secs}s · ctrl-c to interrupt[/]"
+            return f"[{ACCENT}]→[/] {self.state['step']}… [{DIM}]{secs}s · ctrl-c to interrupt[/]"
 
         self._status = self.console.status(label(), spinner="dots", spinner_style=ACCENT)
         self._status.start()
@@ -554,9 +562,9 @@ class Repl:
                 if self._status:
                     self._status.update(label())
         except TurnStalled as e:
-            self.console.print(Text(f"  ⎿  {e}", style="yellow"))
+            self.console.print(Text(f"  │ {e}", style=WARN))
         except CortexCodeSDKError as e:
-            self.console.print(Text(f"Cortex Code: {e}", style="red"))
+            self.console.print(Text(f"Cortex Code: {e}", style=ERR))
             await self.agent.reset()
         finally:
             ticker.cancel()
@@ -565,7 +573,7 @@ class Repl:
             self._sigint = None
             loop.remove_signal_handler(signal.SIGINT)
         if interrupted:
-            self.console.print(Text("  ⎿  Interrupted by user", style="red"))
+            self.console.print(Text("  │ Interrupted by user", style=ERR))
 
     async def handle(self, line: str) -> bool:
         """Returns False to exit."""
@@ -573,7 +581,7 @@ class Repl:
         if not line:
             if self.state.get("asked"):
                 # Enter on its own keeps what the user already gave; it never accepts an invented value
-                self.console.print(Text("  ⎿  (Enter) keep my answers as they are and continue", style=DIM))
+                self.console.print(Text("  │ (Enter) keep my answers as they are and continue", style=DIM))
                 await self.turn("Keep my answers exactly as they are and continue. Do not change any value "
                                 "I gave and do not fill in anything I did not give.")
             else:
@@ -594,7 +602,7 @@ class Repl:
         elif cmd in COMMANDS:
             getattr(self, f"cmd_{cmd[1:]}")(arg)
         else:
-            self.console.print(Text(f"Unknown command {cmd}. /help lists them.", style="red"))
+            self.console.print(Text(f"Unknown command {cmd}. /help lists them.", style=ERR))
         return True
 
     async def run(self) -> None:
@@ -604,7 +612,7 @@ class Repl:
             while True:
                 self._refresh_where()
                 try:
-                    line = await self.session.prompt_async(HTML(f'<style fg="{ACCENT}">›</style> '))
+                    line = await self.session.prompt_async(HTML('<style fg="ansicyan"><b>›</b></style> '))
                 except KeyboardInterrupt:
                     # the Claude Code habit: one ctrl-c clears the line, a second within two seconds leaves
                     now = time.monotonic()

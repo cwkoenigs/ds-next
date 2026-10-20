@@ -80,9 +80,9 @@ def test_render_like_claude_code():
     render(con, UserMessage([ToolResultBlock("t1", [{"type": "text", "text": "# Testing\nline2\nline3"}])]), state)
     render(con, ResultMessage("success", 1500, 1000, False, 2, "s"), state)
     out = con.export_text()
-    assert "⏺ Here are the standards." in out
-    assert "⏺ canon_read(testing)" in out and "⏺ Bash(uv run pytest -q)" in out
-    assert "⎿  # Testing … +2 lines" in out and "2 turns · 1.5s" in out
+    assert "◆ Here are the standards." in out
+    assert "→ canon_read(testing)" in out and "→ Bash(uv run pytest -q)" in out
+    assert "│ # Testing … +2 lines" in out and "2 turns · 1.5s" in out
 
 
 def test_permission_payloads():
