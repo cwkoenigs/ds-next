@@ -37,7 +37,6 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
-from rich import box
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -313,7 +312,7 @@ class Repl:
             Text(f"skills: {len(self.skills.all)} from skills-os · docs-ds {shell}", style=DIM),
         )
         self.console.print(Panel(body, title=f"[bold]▼ ds-next[/bold] [dim]v{__version__}[/dim]", title_align="left",
-                                 border_style=BRAND, box=box.SQUARE, expand=True, padding=(0, 2)))
+                                 border_style=BRAND, expand=False, padding=(0, 2)))
         self.console.print()
 
     def _refresh_where(self) -> None:
