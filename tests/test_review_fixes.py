@@ -1,5 +1,6 @@
 """One regression test per finding from the Codex review of 2026-10-16, named after it."""
 import asyncio
+import types
 import json
 import os
 import re
@@ -249,6 +250,9 @@ def test_ctrl_c_handler_survives_an_approval_prompt(monkeypatch):
     from ds_next import ui
 
     class FakeSession:
+        def __init__(self, *a, **k):
+            self.app = types.SimpleNamespace()        # resize_safe hangs its handler on this
+
         async def prompt_async(self, *a, **k):
             asyncio.get_running_loop().remove_signal_handler(signal.SIGINT)   # what a prompt may do
             return "y"

@@ -300,11 +300,32 @@ def banner(version: str, facts: list[tuple[str, str]], hints: list[str], path: s
     return out
 
 
+def prompt_box(tag: str, text: str, w: int) -> list[Text]:
+    """The prompt frame, three rows at width w: Cortex Code's box, rounded, the session tag at
+    the right of the top rule. `widgets.prompt_frame` draws the same rows live; this is the
+    static print once a line is accepted."""
+    t = f" {tag} "
+    inner = w - 2
+    body = f"{G.prompt} {text}"[: inner - 1]
+    return [Text.assemble(("╭" + "─" * (w - 4 - len(t)), "rule"), (t, "band"), ("──╮", "rule")),
+            Text.assemble(("│ ", "rule"), (body, "prompt"), " " * (inner - 1 - len(body)), ("│", "rule")),
+            Text("╰" + "─" * inner + "╯", style="rule")]
+
+
+class PromptEcho:
+    """The accepted frame as a renderable: drawn at the console's width each time it is printed,
+    so the repaint after a resize fits the new width instead of re-wrapping a fixed line."""
+
+    def __init__(self, tag: str, text: str) -> None:
+        self.tag, self.text = tag, text
+
+    def __rich_console__(self, console, options):
+        yield from prompt_box(self.tag, self.text, max(40, options.max_width))
+
+
 def session_rule(tag: str, w: int = DESIGN_WIDTH) -> Text:
-    """The rule above the prompt with the session tag on it, printed once per prompt (static:
-    prompt_toolkit redraws a multi-line prompt message badly, so the prompt itself stays one line)."""
-    tag = f" {tag} "
-    return Text.assemble(("┌" + "─" * (w - 3 - len(tag)), "rule"), (tag, "band"), ("─┐", "rule"))
+    """The top rule of the prompt frame alone."""
+    return prompt_box(tag, "", w)[0]
 
 
 def toolbar(left: str, right: str, w: int) -> list[tuple[str, str]]:

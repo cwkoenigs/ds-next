@@ -47,7 +47,8 @@ from . import ui_style as S
 from .ui_style import G, LABEL_W
 from .agent import SERVER, Agent, TurnStalled
 from .kb import Canon, Scaffold, Skills, docs_shell_path
-from .widgets import Field, form
+from . import widgets
+from .widgets import Field, form, prompt_line, resize_safe
 
 # Everything printed goes through ui_style: the roles, glyphs and grid of the terminal design
 # system ([[terminal-design]]). One rail per turn; a frame means "needs you"; nothing reflows.
@@ -285,6 +286,12 @@ class Repl:
                  effort: str | None = "low"):
         self.cwd = Path(cwd).resolve()
         self.console = S.console()
+        # Everything printed is kept, so that a resize can clear the screen and print it again at
+        # the new width (widgets.repaint: the fix for frames stacking in VS Code's terminal).
+        self._printed: list[tuple[tuple, dict]] = []
+        self._print = self.console.print
+        self.console.print = self._record        # type: ignore[method-assign]
+        widgets.repaint = self._repaint
         self.turn_no = 0
         self.canon = Canon()
         self.skills = Skills()
@@ -301,13 +308,6 @@ class Repl:
         self.history = FileHistory(str(home / "history"))
         self.completer = SlashCompleter(COMMANDS, {n: s.description for n, s in self.skills.all.items()},
                                         self.canon.scaffolds)
-        # The prompt is a PromptSession on purpose. A multi-row Application (widgets.prompt_line) and
-        # a multi-line prompt message both redraw one row lower per keystroke in VS Code's terminal
-        # once the completion menu changes the height. PromptSession reserves the menu's rows up
-        # front, so it stays put; the frame is drawn around it: the top rule printed once, the right
-        # edge as the right prompt, the bottom rule as the first line of the toolbar.
-        self.session = PromptSession(history=self.history, completer=self.completer, complete_while_typing=True,
-                                     style=Style.from_dict(S.pt_style()), reserve_space_for_menu=8)
 
     # -- chrome
     def banner(self) -> None:
@@ -330,11 +330,14 @@ class Repl:
         except Exception as e:  # noqa: BLE001 - the toolbar must never take the terminal down
             self._where = f"status unavailable ({type(e).__name__})"
 
-    def _cols(self) -> int:
-        try:
-            return get_app().output.get_size().columns
-        except Exception:  # noqa: BLE001 - outside an application there is no size
-            return S.DESIGN_WIDTH
+    def _record(self, *a, **k) -> None:
+        self._printed.append((a, k))
+        self._print(*a, **k)
+
+    def _repaint(self) -> None:
+        """The transcript again, from a clean screen: what a resize prints."""
+        for a, k in self._printed:
+            self._print(*a, **k)
 
     def _toolbar(self):
         model = self.state.get("model") or self.agent.model or "auto"
@@ -371,9 +374,9 @@ class Repl:
             for line in S.frame(head, rows, kind="approval", keys=keys, w=S.width(self.console),
                                 prefix=Text(G.rail + " ", style="rule")):
                 self.console.print(line)
-            return await PromptSession().prompt_async(
-                [("class:rule", G.rail + "   "), ("class:prompt", G.prompt + " ")],
-                style=Style.from_dict(S.pt_style()))
+            session = PromptSession(style=Style.from_dict(S.pt_style()))
+            resize_safe(session.app)
+            return await session.prompt_async([("class:rule", G.rail + "   "), ("class:prompt", G.prompt + " ")])
         except (KeyboardInterrupt, EOFError):
             return "n"
         finally:
@@ -565,6 +568,7 @@ class Repl:
         self.approver.reset()
         self.state.clear()
         self.turn_no = 0
+        self._printed.clear()
         self.console.clear()
         self.banner()
 
@@ -663,14 +667,9 @@ class Repl:
                 self._refresh_where()
                 try:
                     tag = "New session" if self.turn_no == 0 else f"#{self.turn_no + 1}"
-                    width = S.width(self.console)
-                    self.console.print(S.session_rule(tag, width))
-                    bottom = "└" + "─" * (width - 2) + "┘"
-                    line = await self.session.prompt_async(
-                        [("class:rule", "│ "), ("class:prompt", G.prompt + " ")],
-                        rprompt=lambda: [("class:rule", "│" + " " * max(0, self._cols() - width))],
-                        bottom_toolbar=self._toolbar)        # the band sits at the screen's bottom edge
-                    self.console.print(Text(bottom, style="rule"))     # the toolbar leaves with the prompt
+                    line = await prompt_line(tag, completer=self.completer, history=self.history,
+                                             toolbar=self._toolbar)
+                    self.console.print(S.PromptEcho(tag, line))   # the frame erased itself; keep it, with the line
                 except KeyboardInterrupt:
                     # the Claude Code habit: one ctrl-c clears the line, a second within two seconds leaves
                     now = time.monotonic()

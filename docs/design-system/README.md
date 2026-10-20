@@ -25,13 +25,16 @@ Open the `.dc.html` files in a browser.
 The pages here are the current exports (marks 2a–2d, the mascot in the 1a banner). The code in
 `src/ds_next/` is the handoff's code plus these, which the handoff predates or does not cover:
 
-- **The prompt is a closed frame, drawn around a PromptSession.** Both a multi-line prompt
-  message and a multi-row Application (`widgets.prompt_line`) redraw one row lower per keystroke in
-  VS Code's terminal once the completion menu changes the height. A PromptSession reserves the
-  menu's rows up front and stays put, so the frame is built from what it supports: the top rule
-  with the session tag printed once (`session_rule`), the right edge as the right prompt, the
-  bottom rule as the first line of the toolbar, and the bottom rule reprinted when the line is
-  accepted. `prompt_line` stays in the widgets for terminals that handle it.
+- **The prompt is Cortex Code's box.** A closed frame the width of the terminal, rounded corners,
+  the session tag at the right of the top rule, the status band under it and the `/` menu below
+  (`widgets.prompt_line`; `ui_style.prompt_box` reprints it with the accepted line). The handoff's
+  80-column frame with the band at the screen's bottom edge is not what the owner asked for.
+- **A resize clears and repaints.** The stacked frames seen in VS Code were never the keystrokes:
+  xterm.js re-wraps every row that touches the last column when the columns change and moves
+  the cursor, so prompt_toolkit's relative redraw lands under a ghost. Every Application here
+  goes through `widgets.resize_safe`, which on SIGWINCH clears the screen and scrollback, prints
+  the transcript again (`widgets.repaint`, every `console.print` is kept) and draws fresh, as
+  Cortex Code does. Reproduced and verified in headless xterm.js (`bench/xterm`).
 - **`agent_lines`.** `Text.rstrip()` mutates in place and returns None; the handoff prints "None"
   for every agent line. Fixed in the live copy.
 - **Banner chrome** is brighter: title and word-mark in `strong`, labels in `accent`, a `muted` edge,

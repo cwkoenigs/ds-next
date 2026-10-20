@@ -114,4 +114,34 @@ def test_prompt_frame_is_exact():
     frags = prompt_frame("New session", "/new feed-model", 60)
     lines = "".join(txt for _, txt in frags).split("\n")
     assert [len(ln) for ln in lines] == [60, 60, 60], lines
-    assert lines[0].endswith(" New session ─┐") and lines[1].startswith("│ › /new feed-model")
+    assert lines[0].startswith("╭─") and lines[0].endswith(" New session ──╮"), lines[0]
+    assert lines[1].startswith("│ › /new feed-model") and lines[1].endswith("│")
+    assert lines[2] == "╰" + "─" * 58 + "╯"
+    from ds_next import ui_style as S
+    assert lines == [t.plain for t in S.prompt_box("New session", "/new feed-model", 60)], "live and static agree"
+
+
+def test_resize_clears_screen_and_scrollback_then_repaints():
+    """VS Code's terminal re-wraps rows on a column change and shifts the cursor; the only
+    redraw that cannot stack is one from a clean screen with the transcript printed again."""
+    from prompt_toolkit.application import Application
+    from prompt_toolkit.layout import Layout, Window
+    from ds_next import widgets
+
+    writes: list[str] = []
+
+    class Out(DummyOutput):
+        def erase_screen(self): writes.append("2J")
+        def write_raw(self, data): writes.append(data)
+        def cursor_goto(self, row=0, column=0): writes.append(f"goto {row},{column}")
+
+    painted: list[int] = []
+    widgets.repaint = lambda: painted.append(len(writes))
+    try:
+        with create_pipe_input() as inp, create_app_session(input=inp, output=Out()):
+            app = widgets.resize_safe(Application(layout=Layout(Window()), output=Out()))
+            app._on_resize()
+    finally:
+        widgets.repaint = None
+    assert writes[:3] == ["2J", "\x1b[3J", "goto 0,0"], writes
+    assert painted == [3], "the transcript is printed after the clear and before the redraw"

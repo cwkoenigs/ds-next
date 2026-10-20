@@ -1,0 +1,9 @@
+{
+  "name": "ds-next-xterm-bench",
+  "private": true,
+  "description": "ds-next inside headless xterm.js, the engine of VS Code's terminal",
+  "dependencies": {
+    "@xterm/headless": "^6.0.0",
+    "node-pty": "^1.1.0"
+  }
+}

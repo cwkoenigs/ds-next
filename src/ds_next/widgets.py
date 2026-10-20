@@ -11,11 +11,11 @@ from dataclasses import dataclass
 from prompt_toolkit.application import Application, get_app
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.filters import Condition
-from prompt_toolkit.layout import Float, FloatContainer, HSplit, Layout, VSplit, Window
+from prompt_toolkit.filters import Condition, has_completions, is_done
+from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, ScrollOffsets, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
-from prompt_toolkit.layout.menus import CompletionsMenu
+from prompt_toolkit.layout.menus import CompletionsMenuControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
@@ -23,6 +23,49 @@ from . import ui_style as S
 from .ui_style import G, LABEL_W
 
 STYLE = Style.from_dict(S.pt_style())
+
+
+def _grid(width: int) -> Dimension:
+    """A container's width on the grid: `width` columns when the terminal has them (preferred as
+    well as max, or a VSplit shares the slack evenly), what the terminal has when it is narrower."""
+    return Dimension(max=width, preferred=width)
+
+
+def _on_grid(container, width: int | None):
+    """Hold a container to its `_grid` width however wide the terminal is: the root container is
+    always written at the full width, so the cap only holds inside a VSplit with a filler after
+    it (the filler paints nothing). None means the terminal's width."""
+    return VSplit([container, Window()]) if width else container
+
+
+# ── surviving a resize ───────────────────────────────────────────────────────
+# prompt_toolkit redraws by moving the cursor relative to where it last was. When the terminal's
+# columns change, xterm.js (VS Code's terminal) re-wraps every row that reaches the last column
+# and shifts the cursor with it, so the next redraw lands under a ghost of the last one: the
+# stacked frames. Cortex Code and Claude Code answer a resize by clearing the screen and the
+# scrollback and printing the transcript again; so does every Application here. `repaint` is the
+# host's "print everything again", at the new width.
+repaint: Callable[[], None] | None = None
+
+
+def _on_resize(app: Application) -> None:
+    out = app.output
+    app.renderer.reset()                         # forget the last screen: the next draw is whole
+    out.erase_screen()
+    out.write_raw("\x1b[3J")                     # and the scrollback, where the ghosts would be
+    out.cursor_goto(0, 0)
+    out.flush()
+    if repaint is not None:
+        repaint()
+    app._request_absolute_cursor_position()      # the two steps prompt_toolkit's own handler takes
+    app._redraw()
+
+
+def resize_safe(app: Application) -> Application:
+    """Give an Application the resize behaviour above. prompt_toolkit 3.0 registers `_on_resize`
+    as its SIGWINCH handler when the app runs, so the instance attribute is what gets called."""
+    app._on_resize = lambda: _on_resize(app)     # type: ignore[method-assign]
+    return app
 
 
 def _keys(*parts: tuple[str, str]) -> list[tuple[str, str]]:
@@ -71,8 +114,10 @@ async def pick(title: str, options: list[tuple[str, str, str]]) -> str | None:
         out += _keys(("dim", "↑↓ move · "), ("key", " Enter choose "), ("dim", " · Esc cancel"))
         return FormattedText(out)
 
-    body = Frame(Window(FormattedTextControl(text), dont_extend_height=True), title=title, style="class:frame.border")
-    app = Application(layout=Layout(body), key_bindings=kb, style=STYLE, full_screen=False, erase_when_done=True)
+    body = _on_grid(Frame(Window(FormattedTextControl(text), dont_extend_height=True), title=title,
+                          style="class:frame.border", width=_grid(S.DESIGN_WIDTH)), S.DESIGN_WIDTH)
+    app = resize_safe(Application(layout=Layout(body), key_bindings=kb, style=STYLE, full_screen=False,
+                                  erase_when_done=True))
     return await app.run_async()
 
 
@@ -225,46 +270,71 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
 
     rows = [VSplit([label(f), areas[f.key]]) for f in fields]
     rows.append(Window(FormattedTextControl(hint), dont_extend_height=True))
-    body = Frame(HSplit(rows, width=Dimension(max=width - 2)), title=title, style="class:frame.border")
-    app = Application(layout=Layout(body, focused_element=order[0]), key_bindings=kb, style=STYLE,
-                      full_screen=False, erase_when_done=True)
+    body = _on_grid(Frame(HSplit(rows), title=title, style="class:frame.border", width=_grid(width)), width)
+    app = resize_safe(Application(layout=Layout(body, focused_element=order[0]), key_bindings=kb, style=STYLE,
+                                  full_screen=False, erase_when_done=True))
     return await app.run_async()
 
 
 # ── the prompt: a closed frame around the line you type ──────────────────────
+def _cols(width: int | None) -> int:
+    """The frame's width: the terminal's, unless one was asked for (tests, pipes)."""
+    if width:
+        return width
+    try:
+        return get_app().output.get_size().columns
+    except Exception:  # noqa: BLE001 - outside an application there is no size
+        return S.DESIGN_WIDTH
+
 
 def prompt_frame(tag: str, text: str, width: int) -> list[tuple[str, str]]:
-    """The three static rows of a prompt frame, as prompt_toolkit fragments: used live by
-    `prompt_line` and reprinted by the caller once the line is accepted."""
+    """The three static rows of a prompt frame, as prompt_toolkit fragments: what `prompt_line`
+    draws live, and what the caller reprints once the line is accepted. Cortex Code's box: the
+    terminal's width, rounded corners, the session tag at the right of the top rule."""
     t = f" {tag} "
     inner = width - 2
     body = f"{G.prompt} {text}"[: inner - 1]
-    return [("class:rule", "┌" + "─" * (width - 3 - len(t))), ("class:band", t), ("class:rule", "─┐\n"),
+    return [("class:rule", "╭" + "─" * (width - 4 - len(t))), ("class:band", t), ("class:rule", "──╮\n"),
             ("class:rule", "│ "), ("class:prompt", body), ("", " " * (inner - 1 - len(body))), ("class:rule", "│\n"),
-            ("class:rule", "└" + "─" * inner + "┘")]
+            ("class:rule", "╰" + "─" * inner + "╯")]
 
 
 async def prompt_line(tag: str, *, completer=None, history=None, toolbar: Callable[[], list] | None = None,
-                      width: int = S.DESIGN_WIDTH) -> str:
-    """One line of input inside a closed frame with the session tag on its top rule, the `/` menu
-    dropping below it, ↑↓ for history (or the menu when it is open), Tab to complete, Enter to
-    accept. Raises KeyboardInterrupt on ctrl-c and EOFError on ctrl-d with an empty line. The
-    frame erases itself; the caller reprints it with the accepted text."""
+                      width: int | None = None) -> str:
+    """One line of input inside a closed frame the width of the terminal, the session tag on its
+    top rule, the status band under it, the `/` menu dropping below, ↑↓ for history (or the menu
+    when it is open), Tab to complete, Enter to accept. Raises KeyboardInterrupt on ctrl-c and
+    EOFError on ctrl-d with an empty line. The frame erases itself; the caller reprints it with
+    the accepted text (`prompt_frame`). `width` pins the frame (tests); None follows the terminal,
+    so a resize redraws it to fit."""
     area = TextArea(multiline=False, wrap_lines=False, completer=completer, complete_while_typing=True,
                     history=history, style="class:field", prompt=[("class:prompt", G.prompt + " ")])
     buf = area.buffer
     t = f" {tag} "
-    top = FormattedText([("class:rule", "┌" + "─" * (width - 3 - len(t))), ("class:band", t), ("class:rule", "─┐")])
-    bottom = FormattedText([("class:rule", "└" + "─" * (width - 2) + "┘")])
+
+    def top():
+        return FormattedText([("class:rule", "╭" + "─" * (_cols(width) - 4 - len(t))), ("class:band", t),
+                              ("class:rule", "──╮")])
+
+    def bottom():
+        return FormattedText([("class:rule", "╰" + "─" * (_cols(width) - 2) + "╯")])
+
+    def menu_height():                                            # as tall as its items, 8 at most
+        n = len(buf.complete_state.completions) if buf.complete_state else 0
+        return Dimension.exact(min(8, max(1, n)))
+
+    menu = ConditionalContainer(Window(CompletionsMenuControl(), height=menu_height, width=Dimension(min=8),
+                                       dont_extend_width=True, scroll_offsets=ScrollOffsets(top=1, bottom=1)),
+                                filter=has_completions & ~is_done)
     rows = [Window(FormattedTextControl(top), height=1),
             VSplit([Window(FormattedTextControl(FormattedText([("class:rule", "│ ")])), width=2, dont_extend_width=True),
                     area,
                     Window(FormattedTextControl(FormattedText([("class:rule", "│")])), width=1, dont_extend_width=True)]),
-            Window(FormattedTextControl(bottom), height=1)]
+            Window(FormattedTextControl(bottom), height=1),
+            VSplit([Window(width=2), menu])]                       # the menu drops below the box
     if toolbar is not None:
         rows.append(Window(FormattedTextControl(lambda: FormattedText(toolbar())), height=1, style="class:bottom-toolbar"))
-    body = FloatContainer(content=HSplit(rows, width=Dimension(max=width)),
-                          floats=[Float(xcursor=True, ycursor=True, content=CompletionsMenu(max_height=8, scroll_offset=1))])
+    body = _on_grid(HSplit(rows, width=_grid(width) if width else None), width)
     kb = KeyBindings()
     menu_open = Condition(lambda: buf.complete_state is not None)
 
@@ -307,6 +377,6 @@ async def prompt_line(tag: str, *, completer=None, history=None, toolbar: Callab
         if not buf.text:
             e.app.exit(exception=EOFError())
 
-    app = Application(layout=Layout(body, focused_element=area), key_bindings=kb, style=STYLE,
-                      full_screen=False, erase_when_done=True)
+    app = resize_safe(Application(layout=Layout(body, focused_element=area), key_bindings=kb, style=STYLE,
+                                  full_screen=False, erase_when_done=True))
     return await app.run_async()

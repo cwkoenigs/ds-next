@@ -8,3 +8,4 @@ bench/rebuild/runs/*/build.log
 bench/judge/runs/*/build.jsonl
 bench/judge/runs/*/score.err
 bench/judge/runs/*/before/
+bench/xterm/node_modules/
