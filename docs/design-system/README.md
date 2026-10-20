@@ -25,12 +25,13 @@ Open the `.dc.html` files in a browser.
 The pages here are the current exports (marks 2a–2d, the mascot in the 1a banner). The code in
 `src/ds_next/` is the handoff's code plus these, which the handoff predates or does not cover:
 
-- **The prompt is a closed frame now.** The handoff's known gap is closed: the prompt is its own
-  small prompt_toolkit Application (`widgets.prompt_line`), like the form, so the frame closes
-  under the line you type, the `/` menu drops below it, ↑↓ is history or the menu, Tab completes,
-  Enter accepts. The frame erases itself and is reprinted with the accepted line
-  (`widgets.prompt_frame`), so the transcript keeps it. The two-line PromptSession message the
-  handoff used stacked one row per keystroke in VS Code's terminal.
+- **The prompt is a closed frame, drawn around a PromptSession.** Both a multi-line prompt
+  message and a multi-row Application (`widgets.prompt_line`) redraw one row lower per keystroke in
+  VS Code's terminal once the completion menu changes the height. A PromptSession reserves the
+  menu's rows up front and stays put, so the frame is built from what it supports: the top rule
+  with the session tag printed once (`session_rule`), the right edge as the right prompt, the
+  bottom rule as the first line of the toolbar, and the bottom rule reprinted when the line is
+  accepted. `prompt_line` stays in the widgets for terminals that handle it.
 - **`agent_lines`.** `Text.rstrip()` mutates in place and returns None; the handoff prints "None"
   for every agent line. Fixed in the live copy.
 - **Banner chrome** is brighter: title and word-mark in `strong`, labels in `accent`, a `muted` edge,
