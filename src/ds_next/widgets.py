@@ -11,9 +11,11 @@ from dataclasses import dataclass
 from prompt_toolkit.application import Application, get_app
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
+from prompt_toolkit.filters import Condition
+from prompt_toolkit.layout import Float, FloatContainer, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
@@ -225,5 +227,86 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
     rows.append(Window(FormattedTextControl(hint), dont_extend_height=True))
     body = Frame(HSplit(rows, width=Dimension(max=width - 2)), title=title, style="class:frame.border")
     app = Application(layout=Layout(body, focused_element=order[0]), key_bindings=kb, style=STYLE,
+                      full_screen=False, erase_when_done=True)
+    return await app.run_async()
+
+
+# ── the prompt: a closed frame around the line you type ──────────────────────
+
+def prompt_frame(tag: str, text: str, width: int) -> list[tuple[str, str]]:
+    """The three static rows of a prompt frame, as prompt_toolkit fragments: used live by
+    `prompt_line` and reprinted by the caller once the line is accepted."""
+    t = f" {tag} "
+    inner = width - 2
+    body = f"{G.prompt} {text}"[: inner - 1]
+    return [("class:rule", "┌" + "─" * (width - 3 - len(t))), ("class:band", t), ("class:rule", "─┐\n"),
+            ("class:rule", "│ "), ("class:prompt", body), ("", " " * (inner - 1 - len(body))), ("class:rule", "│\n"),
+            ("class:rule", "└" + "─" * inner + "┘")]
+
+
+async def prompt_line(tag: str, *, completer=None, history=None, toolbar: Callable[[], list] | None = None,
+                      width: int = S.DESIGN_WIDTH) -> str:
+    """One line of input inside a closed frame with the session tag on its top rule, the `/` menu
+    dropping below it, ↑↓ for history (or the menu when it is open), Tab to complete, Enter to
+    accept. Raises KeyboardInterrupt on ctrl-c and EOFError on ctrl-d with an empty line. The
+    frame erases itself; the caller reprints it with the accepted text."""
+    area = TextArea(multiline=False, wrap_lines=False, completer=completer, complete_while_typing=True,
+                    history=history, style="class:field", prompt=[("class:prompt", G.prompt + " ")])
+    buf = area.buffer
+    t = f" {tag} "
+    top = FormattedText([("class:rule", "┌" + "─" * (width - 3 - len(t))), ("class:band", t), ("class:rule", "─┐")])
+    bottom = FormattedText([("class:rule", "└" + "─" * (width - 2) + "┘")])
+    rows = [Window(FormattedTextControl(top), height=1),
+            VSplit([Window(FormattedTextControl(FormattedText([("class:rule", "│ ")])), width=2, dont_extend_width=True),
+                    area,
+                    Window(FormattedTextControl(FormattedText([("class:rule", "│")])), width=1, dont_extend_width=True)]),
+            Window(FormattedTextControl(bottom), height=1)]
+    if toolbar is not None:
+        rows.append(Window(FormattedTextControl(lambda: FormattedText(toolbar())), height=1, style="class:bottom-toolbar"))
+    body = FloatContainer(content=HSplit(rows, width=Dimension(max=width)),
+                          floats=[Float(xcursor=True, ycursor=True, content=CompletionsMenu(max_height=8, scroll_offset=1))])
+    kb = KeyBindings()
+    menu_open = Condition(lambda: buf.complete_state is not None)
+
+    @kb.add("enter")
+    def _enter(e):
+        cs = buf.complete_state
+        if cs is not None and cs.current_completion is not None:
+            buf.apply_completion(cs.current_completion)     # take the highlighted completion, then accept
+        e.app.exit(result=buf.text)
+
+    @kb.add("tab")
+    def _tab(e):
+        if buf.complete_state is None:
+            buf.start_completion(select_first=True)
+        else:
+            buf.complete_next()
+
+    @kb.add("s-tab", filter=menu_open)
+    def _stab(e):
+        buf.complete_previous()
+
+    @kb.add("up")
+    def _up(e):
+        buf.auto_up()
+
+    @kb.add("down")
+    def _down(e):
+        buf.auto_down()
+
+    @kb.add("escape", filter=menu_open)
+    def _close(e):
+        buf.complete_state = None
+
+    @kb.add("c-c")
+    def _interrupt(e):
+        e.app.exit(exception=KeyboardInterrupt())
+
+    @kb.add("c-d")
+    def _eof(e):
+        if not buf.text:
+            e.app.exit(exception=EOFError())
+
+    app = Application(layout=Layout(body, focused_element=area), key_bindings=kb, style=STYLE,
                       full_screen=False, erase_when_done=True)
     return await app.run_async()

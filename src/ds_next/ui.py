@@ -47,7 +47,7 @@ from . import ui_style as S
 from .ui_style import G, LABEL_W
 from .agent import SERVER, Agent, TurnStalled
 from .kb import Canon, Scaffold, Skills, docs_shell_path
-from .widgets import Field, form, pick
+from .widgets import Field, form, prompt_frame, prompt_line
 
 # Everything printed goes through ui_style: the roles, glyphs and grid of the terminal design
 # system ([[terminal-design]]). One rail per turn; a frame means "needs you"; nothing reflows.
@@ -298,14 +298,9 @@ class Repl:
         self._where = ""
         home = Path.home() / ".ds"
         home.mkdir(exist_ok=True)
-        self.session = PromptSession(
-            history=FileHistory(str(home / "history")),
-            completer=SlashCompleter(COMMANDS, {n: s.description for n, s in self.skills.all.items()},
-                                     self.canon.scaffolds),
-            complete_while_typing=True,
-            bottom_toolbar=self._toolbar,
-            style=Style.from_dict(S.pt_style()),
-        )
+        self.history = FileHistory(str(home / "history"))
+        self.completer = SlashCompleter(COMMANDS, {n: s.description for n, s in self.skills.all.items()},
+                                        self.canon.scaffolds)
 
     # -- chrome
     def banner(self) -> None:
@@ -654,9 +649,13 @@ class Repl:
             while True:
                 self._refresh_where()
                 try:
-                    self.console.print(S.session_rule("New session" if self.turn_no == 0 else f"#{self.turn_no + 1}",
-                                                      S.width(self.console)))
-                    line = await self.session.prompt_async([("class:rule", "│ "), ("class:prompt", G.prompt + " ")])
+                    tag = "New session" if self.turn_no == 0 else f"#{self.turn_no + 1}"
+                    width = S.width(self.console)
+                    line = await prompt_line(tag, completer=self.completer, history=self.history,
+                                             toolbar=self._toolbar, width=width)
+                    # the frame erased itself; leave it in the transcript with what was typed
+                    self.console.print(Text.assemble(*((txt, cls.removeprefix("class:")) for cls, txt in
+                                                       prompt_frame(tag, line, width))))
                 except KeyboardInterrupt:
                     # the Claude Code habit: one ctrl-c clears the line, a second within two seconds leaves
                     now = time.monotonic()
