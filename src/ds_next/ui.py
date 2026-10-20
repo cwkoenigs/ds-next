@@ -669,7 +669,7 @@ class Repl:
                     line = await self.session.prompt_async(
                         [("class:rule", "│ "), ("class:prompt", G.prompt + " ")],
                         rprompt=lambda: [("class:rule", "│" + " " * max(0, self._cols() - width))],
-                        bottom_toolbar=lambda: [("class:rule", bottom + "\n"), *self._toolbar()])
+                        bottom_toolbar=self._toolbar)        # the band sits at the screen's bottom edge
                     self.console.print(Text(bottom, style="rule"))     # the toolbar leaves with the prompt
                 except KeyboardInterrupt:
                     # the Claude Code habit: one ctrl-c clears the line, a second within two seconds leaves
