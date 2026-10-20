@@ -12,6 +12,11 @@ canon, so every team CLI can import them from `canon_lib.ui_style`).
 - `ui_style.py`: the token module as delivered (the live copy is in `src/ds_next/`).
 - `uploads/`: the reference screenshots (Cortex Code, Hermes, Claude Code).
 - `_ds/industry-*`: the Industry web design system whose steel ramp the colour roles derive from.
+- `export/`: the design-system package from the Claude Design project: `readme.md` (principles,
+  content fundamentals, visual foundations), `tokens/` (CSS roles), `guidelines/` (specimen cards),
+  `components/terminal/*.prompt.md` (the nineteen primitives), `assets/mascot.txt`. The React
+  sources stay in the project (https://claude.ai/design/p/81fef9af-a683-4f05-a370-344af3d1ea9e).
+- `../../skills/ds-terminal-design/`: the installable skill that points an agent at all of this.
 
 Open the `.dc.html` files in a browser.
 

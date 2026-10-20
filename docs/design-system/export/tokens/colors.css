@@ -1,0 +1,49 @@
+/* ds-next terminal colour roles. Dark is the default; [data-theme="light"] flips the ramp.
+   Derived from the Industry steel accent (#5980a6) and neutral ramp; ok/warn/err generated in OKLCH
+   at the accent's lightness so every colour weighs the same. Colour names a voice or an outcome. */
+:root {
+  --term-bg: #1d1f20;
+  --term-surface: #2b2b2d;
+  --term-text: #e7e7ea;
+  --term-muted: #98989b;
+  --term-dim: #7a7a7d;
+  --term-rule: #424244;
+  --term-accent: #94bce3;
+  --term-accent-strong: #b5d9fd;
+  --term-brand: #749dc4;
+  --term-ok: #7fd4a0;
+  --term-warn: #e3c56b;
+  --term-err: #ef8a7a;
+  --term-hl: #2c455d;
+  --term-cursor: #e7e7ea;
+  --term-cursor-fg: #1d1f20;
+  /* semantic aliases */
+  --voice-you: var(--term-accent-strong);
+  --voice-agent: var(--term-accent);
+  --voice-machine: var(--term-muted);
+  --edge-input: var(--term-dim);
+  --edge-approval: var(--term-warn);
+  --band-bg: var(--term-brand);
+  --band-fg: var(--term-bg);
+  --key-bg: var(--term-accent);
+  --key-fg: var(--term-bg);
+  /* ANSI-16 fallbacks, for reference: text=default muted=bright_black dim=bright_black rule=bright_black
+     accent=cyan strong=bold cyan brand=blue ok=green warn=yellow err=red band=black on blue */
+}
+[data-theme="light"] {
+  --term-bg: #f2f2f3;
+  --term-surface: #e9e9ea;
+  --term-text: #1d1f20;
+  --term-muted: #5d5d60;
+  --term-dim: #7a7a7d;
+  --term-rule: #d4d4d7;
+  --term-accent: #416180;
+  --term-accent-strong: #2c455d;
+  --term-brand: #5980a6;
+  --term-ok: #2f7d4f;
+  --term-warn: #8a6a12;
+  --term-err: #b3402e;
+  --term-hl: #c9dcee;
+  --term-cursor: #1d1f20;
+  --term-cursor-fg: #f2f2f3;
+}

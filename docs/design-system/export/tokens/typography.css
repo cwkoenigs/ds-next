@@ -1,0 +1,10 @@
+/* One face in the terminal. Barlow / Barlow Condensed are for documentation around it only. */
+:root {
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, "SF Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace;
+  --font-doc: "Barlow", system-ui, sans-serif;
+  --font-doc-heading: "Barlow Condensed", system-ui, sans-serif;
+  --term-font-size: 12.5px;
+  --term-line: 19px;        /* every terminal row is exactly this tall */
+  --term-weight: 400;
+  --term-weight-bold: 700;
+}

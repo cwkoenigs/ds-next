@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SKILLS = ("ds-new",)
+SKILLS = ("ds-new", "ds-terminal-design")
 
 
 def cortex_home() -> Path:

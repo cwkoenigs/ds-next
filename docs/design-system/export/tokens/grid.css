@@ -1,0 +1,11 @@
+/* The 80-column grid. Two indents only: col 3 for what is said or run, col 5 for what came back. */
+:root {
+  --term-cols: 80;
+  --term-min-cols: 60;
+  --term-indent: 2ch;        /* agent text, tool calls        → col 3 */
+  --term-result-indent: 4ch; /* tool results                  → col 5 */
+  --term-label-w: 12ch;      /* forms, /status, reconcile     → values at col 16 */
+  --term-pane-pad: 14px 18px;
+  --term-banner-left: 30ch;  /* left pane of the two-pane banner */
+  --term-mascot-w: 28ch;
+}

@@ -170,7 +170,7 @@ def setup(check: bool = typer.Option(False, "--check", help="report what would c
     """Connect this machine's Cortex Code to the knowledge system. Safe to rerun."""
     from . import setup as setup_mod
 
-    ok = setup_mod.setup_cortex(check, lambda line: out.print(S.labelled("", line)))
+    ok = setup_mod.setup_cortex(check, lambda line: out.print(Text("  " + line)))
     if not check:
         out.print(S.hint("restart Cortex Code to pick this up"))
     raise typer.Exit(0 if ok else 1)
