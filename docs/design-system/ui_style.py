@@ -29,6 +29,10 @@ PALETTE = {
     "key":     ("bold #1d1f20 on #94bce3", "bold #f2f2f3 on #416180", "bold black on cyan"),
     "surface": ("on #2b2b2d", "on #e9e9ea", "on bright_black"),
     "hl":      ("on #2c455d", "on #c9dcee", "reverse"),
+    "eye":     ("#1d1f20", "#f2f2f3", "black"),          # mascot eyes: the terminal ground
+    "on_brand": ("on #749dc4", "on #5980a6", "on blue"),
+    "on_strong": ("on #b5d9fd", "on #2c455d", "on cyan"),
+    "on_eye":  ("on #1d1f20", "on #f2f2f3", "on black"),
 }
 
 
@@ -56,10 +60,33 @@ def console(*, color: bool = True, **kw) -> Console:
     return Console(theme=theme(color=color), highlight=False, **kw)
 
 
+_ANSI = {"black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"}
+
+
+def _pt(spec: str) -> str:
+    """A rich style string in prompt_toolkit's dialect: `on x` becomes `bg:x`, ANSI names get
+    their `ansi` prefix, `default` and `reverse` keep their meaning."""
+    out, bg = [], False
+    for tok in spec.split():
+        if tok == "on":
+            bg = True
+            continue
+        if tok == "default":
+            tok = ""
+        elif tok.startswith("bright_") and tok[7:] in _ANSI:
+            tok = "ansibright" + tok[7:]
+        elif tok in _ANSI:
+            tok = "ansi" + tok
+        if tok:
+            out.append(("bg:" + tok) if bg and (tok.startswith(("#", "ansi"))) else tok)
+        bg = False
+    return " ".join(out)
+
+
 def pt_style() -> dict[str, str]:
     """The same roles for prompt_toolkit (prompt, completion menu, widgets)."""
     dark, tc = is_dark(), truecolor()
-    col = {r: (v[0] if dark else v[1]) if tc else v[2] for r, v in PALETTE.items()}
+    col = {r: _pt((v[0] if dark else v[1]) if tc else v[2]) for r, v in PALETTE.items()}
     bg, fg, sf = ("#1d1f20", "#e7e7ea", "#2b2b2d") if dark else ("#f2f2f3", "#1d1f20", "#e9e9ea")
     return {
         "prompt": col["strong"], "rule": col["rule"], "band": col["band"], "key": col["key"],
@@ -119,7 +146,9 @@ def agent_lines(c: Console, body: RenderableType) -> None:
     lines = c.render_lines(body, c.options.update_width(width(c) - INDENT), pad=False)
     for i, segs in enumerate(lines):
         head = Text(G.agent + " ", style="accent") if i == 0 else Text(G.rail + " ", style="rule")
-        c.print(head, Text.assemble(*((s.text, s.style or "") for s in segs)).rstrip(), sep="")
+        body_line = Text.assemble(*((s.text, s.style or "") for s in segs))
+        body_line.rstrip()                                   # in place; it returns None
+        c.print(head, body_line, sep="")
 
 
 def run(tool: str, arg: str = "") -> Text:
@@ -175,6 +204,55 @@ def error(what: str, fix: str = "") -> list[Text]:
     return out
 
 
+# ── the mascot: dog (steel) and cat (light accent), arms around each other ─────
+# 28×20 pixels, drawn with half-blocks so each text row carries two pixel rows.
+# D dog · C cat · k eye/nose (terminal background) · . empty
+MASCOT = """\
+............................
+................C......C....
+....DDDDDD......CC....CC....
+..DDDDDDDDDD....CCCCCCCCC...
+.DDDDDDDDDDDD..CCCCCCCCCCC..
+.DDDDDDDDDDDD..CCCCCCCCCCC..
+.DDDkkDDDkkDD..CCkkCCCCkkC..
+.DDDkkDDDkkDD..CCkkCCCCkkC..
+.DDDDDDDDDDDD..CCCCCCCCCCC..
+.DDDDDkkDDDDD..CCCCCkkCCCC..
+.DD.DDDDDD.DD...CCCCCCCCC...
+....DDDDDD........CCCCC.....
+..CCCDDDDDDDDDCCCCCCCCCDDD..
+..CDDDDDDDDDDDCCCCCCCCCCCD..
+..DDDDDDDDDDD..CCCCCCCCCC...
+..DDDDDDDDDDD..CCCCCCCCCC.C.
+..DDDDDDDDDDD..CCCCCCCCCCCC.
+..DDDDDDDDDDD..CCCCCCCCCC...
+..DDD..DDD.....CCC..CCC.....
+..DDD..DDD.....CCC..CCC.....
+""".splitlines()
+_INK = {"D": "brand", "C": "strong", "k": "eye"}
+
+
+def mascot_lines() -> list[Text]:
+    """MASCOT as 10 Rich lines of ▀▄█: top pixel = foreground, bottom pixel = background."""
+    out = []
+    for top, bot in zip(MASCOT[0::2], MASCOT[1::2]):
+        t = Text()
+        for a, b in zip(top, bot):
+            ia, ib = _INK.get(a), _INK.get(b)
+            if not ia and not ib:
+                t.append(" ")
+            elif ia == ib:
+                t.append("█", style=ia)
+            elif ia and ib:
+                t.append("▀", style=f"{ia} on_{ib}")
+            elif ia:
+                t.append("▀", style=ia)
+            else:
+                t.append("▄", style=ib)
+        out.append(t)
+    return out
+
+
 # ── frames: a frame means "needs you" ────────────────────────────────────────
 def frame(title: Text | str, rows: list[Text | None], *, kind: str = "input", keys: Text | None = None,
           w: int = DESIGN_WIDTH, prefix: Text | None = None) -> list[Text]:
@@ -198,16 +276,17 @@ def frame(title: Text | str, rows: list[Text | None], *, kind: str = "input", ke
 
 
 def banner(version: str, facts: list[tuple[str, str]], hints: list[str], path: str, tagline: str,
-           w: int = DESIGN_WIDTH) -> list[Text]:
-    """Two-pane frame shown once: word-mark left, facts right, path on a footer row."""
+           w: int = DESIGN_WIDTH, art: list[Text] | None = None) -> list[Text]:
+    """Two-pane frame shown once: the mark and word-mark left, facts right, path on a footer row."""
     li = 30
     ri = w - 3 - li
-    title = Text.assemble(("ds-next", "brand bold"), (f" {version}", "dim"))
-    e = "dim"
+    title = Text.assemble(("ds-next", "strong"), (f" {version}", "accent"))
+    e = "muted"            # the one decorative frame: a visible edge, a bright title, as Cortex draws it
     out = [Text.assemble(("┌─ ", e), title, (" " + "─" * (li - 3 - title.cell_len) + "┬" + "─" * ri + "┐", e))]
-    left: list[Text] = [Text(), Text(), Text.assemble("  ", ("ds-next", "brand bold")), Text("  " + tagline, style="muted")]
-    right: list[Text] = [Text()] + [Text.assemble(("  " + f"{k:<{LABEL_W}} ", "dim"), v) for k, v in facts] + [Text()]
-    right += [Text("  " + h, style="dim") for h in hints]
+    left: list[Text] = [*(art if art is not None else mascot_lines()), Text(),
+                        Text.assemble("  ", ("ds-next", "strong")), Text("  " + tagline, style="accent")]
+    right: list[Text] = [Text()] + [Text.assemble(("  " + f"{k:<{LABEL_W}} ", "accent"), v) for k, v in facts] + [Text()]
+    right += [Text("  " + h, style="muted") for h in hints]
     for i in range(max(len(left), len(right))):
         l_ = (left[i] if i < len(left) else Text()).copy()
         r_ = (right[i] if i < len(right) else Text()).copy()
@@ -219,6 +298,13 @@ def banner(version: str, facts: list[tuple[str, str]], hints: list[str], path: s
     out.append(Text.assemble(("│", e), " " * lp, (path, "muted"), " " * (w - 2 - lp - len(path)), ("│", e)))
     out.append(Text("└" + "─" * (w - 2) + "┘", style=e))
     return out
+
+
+def session_rule(tag: str, w: int = DESIGN_WIDTH) -> Text:
+    """The rule above the prompt with the session tag on it, printed once per prompt (static:
+    prompt_toolkit redraws a multi-line prompt message badly, so the prompt itself stays one line)."""
+    tag = f" {tag} "
+    return Text.assemble(("┌" + "─" * (w - 3 - len(tag)), "rule"), (tag, "band"), ("─┐", "rule"))
 
 
 def toolbar(left: str, right: str, w: int) -> list[tuple[str, str]]:
