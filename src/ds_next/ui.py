@@ -452,34 +452,22 @@ class Repl:
         self.console.print(_bullet(Text.assemble(("Scaffold ", ""), (sc.id, "bold"), (f" v{sc.version} · {sc.title}", DIM)),
                                    style="green"))
         name = rest[0] if rest and scaffold.NAME_RE.match(rest[0]) else ""
+        # Three answers. The type decides the rest (tags, test and lint commands); standards are
+        # declined later, from /status, when one actually gets in the way.
         fields = [
-            Field("name", "name", name, "lowercase-with-dashes; also the folder and the command", True),
+            Field("name", "name", name, "lowercase-with-dashes; also the folder name", True),
             Field("purpose", "purpose", " ".join(rest[1:]) if name else " ".join(rest),
                   "one line: what it does and for whom", True),
-            Field("snowflake", "snowflake", "", "DATABASE.SCHEMA it reads or writes; empty for none"),
-            Field("notes", "notes", "", "the one thing future-you should know; optional"),
             Field("owner", "owner", scaffold._git_user(), "who answers for this repo"),
-            Field("tags", "extra tags", "", f"comma-separated, beyond {', '.join(sc.tags)}"),
-            Field("test_cmd", "test", sc.defaults.get("test_cmd", ""), "from the scaffold"),
-            Field("lint_cmd", "lint", sc.defaults.get("lint_cmd", ""), "from the scaffold"),
-            Field("declines", "declines", "", "standards to decline now, as id: reason; id: reason"),
         ]
 
         def answers(v: dict[str, str]) -> scaffold.Answers:
-            declines = {}
-            for part in filter(None, (p.strip() for p in v["declines"].split(";"))):
-                sid, _, why = part.partition(":")
-                declines[sid.strip()] = why.strip()
-            return scaffold.Answers(name=v["name"], purpose=v["purpose"], scaffold=sc.id, owner=v["owner"],
-                                    test_cmd=v["test_cmd"], lint_cmd=v["lint_cmd"], snowflake=v["snowflake"],
-                                    notes=v["notes"], tags=[t for t in v["tags"].split(",") if t.strip()],
-                                    declines=declines)
+            return scaffold.Answers(name=v["name"], purpose=v["purpose"], scaffold=sc.id, owner=v["owner"])
 
         def footer(v: dict[str, str]) -> str:
-            tags = list(dict.fromkeys([*sc.tags, *(["snowflake"] if v["snowflake"] else []),
-                                       *(t.strip().lower() for t in v["tags"].split(",") if t.strip())]))
-            n = len(self.canon.applicable(tags))
-            return f"{n} standards apply · tags {', '.join(tags)}"
+            n = len(self.canon.applicable(list(sc.tags)))
+            outs = f" · outputs: {', '.join(sc.outputs)}" if sc.outputs else ""
+            return f"{n} standards apply{outs} · tags {', '.join(sc.tags)}"
 
         def validate(v: dict[str, str]):
             try:
@@ -489,7 +477,7 @@ class Repl:
             try:
                 scaffold.render(a, self.canon, self.skills)
             except ValueError as e:
-                return ("declines", str(e))
+                return ("purpose", str(e))
             if (self.cwd / a.name).exists():
                 return ("name", f"{a.name}/ already exists here")
             return None
@@ -499,12 +487,9 @@ class Repl:
             self.console.print(Text("  ⎿  cancelled", style=DIM))
             return
         a = answers(v).resolve(self.canon)
-        draft = {k: val for k, val in {
-            "scaffold": sc.id, "name": a.name, "purpose": a.purpose, "owner": a.owner, "snowflake": a.snowflake,
-            "notes": a.notes, "tags": extra_tags(v["tags"], sc.tags),
-            "test_cmd": a.test_cmd, "lint_cmd": a.lint_cmd, "declines": a.declines}.items() if val}
+        draft = {"scaffold": sc.id, "name": a.name, "purpose": a.purpose, "owner": a.owner}
         shown = Text()
-        for k in ("name", "purpose", "snowflake", "notes", "owner", "tags", "declines"):
+        for k in ("name", "purpose", "owner"):
             if k in draft:
                 shown.append(f"{k:<10}", style=DIM).append(f"{draft[k]}\n")
         shown.append(footer(v), style=ACCENT)

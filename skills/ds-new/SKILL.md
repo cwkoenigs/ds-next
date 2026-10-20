@@ -27,36 +27,30 @@ If only one scaffold is accepted, still show the picker so the user sees what th
 Then call `scaffold_get` with the chosen id. Keep its `version`, `tags` and `defaults`
 (`test_cmd`, `lint_cmd`); you pass the version back when creating.
 
-## 2. The form
+## 2. Three answers
 
-Ask for everything still missing in **one** round, never one question at a time.
+Ask for whatever is still missing in **one** message, never one question at a time:
 
-- If name or purpose is missing, ask for both in one short message:
-  "Name (lowercase-with-dashes) and purpose (one line: what it does and for whom)."
-  A name the user gives in another case or with spaces: offer the lowercase-with-dashes form and
-  use it only if they agree. Never invent a name or a purpose.
-- Then one `AskUserQuestion` with these questions:
-  1. **Snowflake** (single): "None", or Other for `DATABASE.SCHEMA` it reads or writes.
-  2. **Owner** (single): the git user from `git config user.name` as the first option, or Other.
-  3. **Declines** (single): "None", or Other as `id: reason; id: reason` for standards declined now.
-  4. **Extra tags** (multi): the common tags not already in the scaffold's (`snowflake`,
-     `cortex`, `mcp`, `data`), or Other. A Snowflake schema adds `snowflake` by itself.
+- **name**: lowercase-with-dashes, also the folder name. A name given in another case or with
+  spaces: offer the lowercase-with-dashes form and use it only if they agree.
+- **purpose**: one line, what it does and for whom.
+- **owner**: default to `git config user.name`; only ask if that is empty.
 
-`test_cmd` and `lint_cmd` come from the scaffold's defaults; mention them, do not ask.
+That is the whole form. The type decides the tags, the test and lint commands and the outputs.
+Do not ask about Snowflake schemas, extra tags, notes or declines: standards are declined later,
+from status, when one actually gets in the way. Never invent a name or a purpose.
 
-## 3. Show what applies, then confirm
+## 3. Show, then confirm
 
-Call `canon_list` with the scaffold's tags plus any extras. Show the draft as a short table
-(scaffold and version, name, purpose, snowflake, owner, tags, test, lint, declines) and one
-line: "N standards apply (K gotchas)." If a decline names a standard that is not in that list,
-say so. Then one `AskUserQuestion`: "Create it?" with "Create", "Change something", "Cancel".
-On "Change something", ask what and re-show the table once.
+Call `canon_list` with the scaffold's tags. Show a four-line draft (type and version, name,
+purpose, owner) and one line: "N standards apply · outputs: …". Then one `AskUserQuestion`:
+"Create it?" with "Create", "Change something", "Cancel". On "Change something", ask what and
+re-show once.
 
 ## 4. Create
 
-Call `scaffold_project` with: `scaffold`, `scaffold_version` (from step 1), `name`, `purpose`,
-and only the optional fields the user actually set (`snowflake`, `owner`, `tags`, `notes`,
-`declines`, `test_cmd`, `lint_cmd`). Pass the user's values unchanged. The tool creates the
+Call `scaffold_project` with exactly: `scaffold`, `scaffold_version` (from step 1), `name`,
+`purpose`, `owner`. Pass the user's values unchanged. The tool creates the
 repository in the current directory; it refuses a stale scaffold version, a bad name or a
 non-empty directory, and the message says why. Report that message as it is; do not retry
 with values you made up.
