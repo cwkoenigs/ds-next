@@ -147,7 +147,7 @@ def docs(output: Path = typer.Option(None, "--out", help="build directory (defau
 
 @app.command()
 def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from a file"),
-        yes: bool = typer.Option(False, "--yes", help="allow ds write tools (scaffold, block_add, capture)"),
+        yes: bool = typer.Option(False, "--yes", help="allow ds write tools (scaffold, block_add, code_add, capture)"),
         yes_all: bool = typer.Option(False, "--yes-all", help="allow every tool, Bash and file edits included: "
                                      "only for a scratch repo you will inspect afterwards"),
         effort: str = typer.Option("low", "--effort", help="thinking effort: minimal, low, medium, high, max"),
@@ -163,7 +163,7 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
 
     async def permit(tool_name, inp, ctx):
         title, detail = describe_permission(tool_name, inp)
-        if yes_all or (yes and title in ("scaffold_project", "block_add", "capture")):
+        if yes_all or (yes and title in ("scaffold_project", "block_add", "code_add", "capture")):
             if yes_all:
                 out.print(f"  ⎿  approved by --yes-all: {title} {detail.splitlines()[0][:100] if detail else ''}",
                           style="yellow")
