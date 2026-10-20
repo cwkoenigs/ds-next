@@ -297,7 +297,7 @@ class Repl:
             Text.assemble(("✻ ", ACCENT), ("Welcome to ", "bold"), ("ds-next", f"bold {ACCENT}"),
                           (f" v{__version__}", DIM)),
             Text(""),
-            Text("  /new to start a project · /help for commands · ctrl-c interrupts", style=DIM),
+            Text("  /new to start a project · /help for commands · ctrl-c twice (or /exit) leaves", style=DIM),
             Text(""),
             Text(f"  cwd:    {_tilde(self.cwd)}", style=DIM),
             Text(f"  canon:  {len(self.canon.standards)} standards, {len(self.canon.scaffolds)} scaffolds "
@@ -616,14 +616,22 @@ class Repl:
     async def run(self) -> None:
         self.banner()
         try:
+            last_interrupt = 0.0
             while True:
                 self._refresh_where()
                 try:
                     line = await self.session.prompt_async(HTML(f'<style fg="{ACCENT}">›</style> '))
                 except KeyboardInterrupt:
+                    # the Claude Code habit: one ctrl-c clears the line, a second within two seconds leaves
+                    now = time.monotonic()
+                    if now - last_interrupt < 2.0:
+                        break
+                    last_interrupt = now
+                    self.console.print(Text("  ctrl-c again to leave, or /exit", style=DIM))
                     continue
                 except EOFError:
                     break
+                last_interrupt = 0.0
                 self.console.print()
                 if not await self.handle(line):
                     break
