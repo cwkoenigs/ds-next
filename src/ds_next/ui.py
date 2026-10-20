@@ -312,11 +312,8 @@ class Repl:
                  f"at {_tilde(self.canon.root)}", style=DIM),
             Text(f"skills: {len(self.skills.all)} from skills-os · docs-ds {shell}", style=DIM),
         )
-        frame = Table(box=box.SQUARE, show_header=True, border_style=BRAND, expand=False, padding=(0, 2),
-                      header_style="bold", pad_edge=True)
-        frame.add_column(Text.assemble(("▼ ds-next", "bold"), (f"  v{__version__}", DIM)))
-        frame.add_row(body)
-        self.console.print(frame)
+        self.console.print(Panel(body, title=f"[bold]▼ ds-next[/bold] [dim]v{__version__}[/dim]", title_align="left",
+                                 border_style=BRAND, box=box.SQUARE, expand=True, padding=(0, 2)))
         self.console.print()
 
     def _refresh_where(self) -> None:
