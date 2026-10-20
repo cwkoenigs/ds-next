@@ -65,6 +65,8 @@ def reconcile(path: Path = typer.Argument(Path("."), help="repo, or a directory 
                       "Open ds-next and run /status.")
     else:
         out.print(rep.summary())
+        if rep.outputs:
+            out.print(f"  outputs  {', '.join(rep.outputs)}  (declared by the {rep.type or 'scaffold'} type; publishing is not tracked yet)")
         for p in rep.pending:
             out.print(f"  pending  {p}")
         for sid, why in rep.declined.items():

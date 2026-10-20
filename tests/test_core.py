@@ -142,3 +142,22 @@ def test_new_repo_starts_on_canon_lib_when_the_canon_ships_it(tmp_path, canon, s
     assert f'canon_lib = "{canon.root / "lib"}"' in manifest and f'canon = "{canon.root}"' in manifest
     assert "canon_index = " in manifest
     assert "`canon-lib` is a dependency" in files["AGENTS.md"]
+
+
+def test_type_and_outputs_are_recorded(tmp_path, canon, skills):
+    a = scaffold.Answers(**{**ANSWERS, "scaffold": "ml-pipeline"})
+    scaffold.write(a, tmp_path / a.name, canon, skills, git=False)
+    m = (tmp_path / a.name / ".ds" / "manifest.toml").read_text()
+    assert 'type = "ml-pipeline"' in m and 'outputs = ["model", "features"]' in m
+    assert "Outputs: model, features." in (tmp_path / a.name / "README.md").read_text()
+    r = reconcile.check(tmp_path / a.name, canon)
+    assert r.ok and r.type == "ml-pipeline" and r.outputs == ["model", "features"]
+
+
+def test_no_outputs_is_recorded_as_empty(tmp_path, canon, skills):
+    a = scaffold.Answers(**ANSWERS)
+    scaffold.write(a, tmp_path / a.name, canon, skills, git=False)
+    m = (tmp_path / a.name / ".ds" / "manifest.toml").read_text()
+    assert 'type = "cli"' in m and "outputs = []" in m
+    assert "Outputs:" not in (tmp_path / a.name / "README.md").read_text()
+    assert reconcile.check(tmp_path / a.name, canon).outputs == []

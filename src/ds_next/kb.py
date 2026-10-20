@@ -87,6 +87,8 @@ class Scaffold:
     dir: str
     files: tuple[str, ...]
     hash: str = ""
+    type: str = ""                 # project type: cli, library, analysis, streamlit-app, ml-pipeline
+    outputs: tuple[str, ...] = ()  # what a repo of this type produces: report, dashboard, model, features
 
     @property
     def accepted(self) -> bool:
@@ -160,7 +162,7 @@ class Canon:
             self._scaffolds = {
                 s["id"]: Scaffold(s["id"], int(s["version"]), s["title"], tuple(s["path"]), tuple(s["tags"]),
                                   s.get("status", ""), dict(s.get("defaults", {})), s["dir"], tuple(s["files"]),
-                                  s.get("hash", ""))
+                                  s.get("hash", ""), s.get("type", ""), tuple(s.get("outputs", [])))
                 for s in data.get("scaffolds", [])}
             self._code = {s["id"]: s for s in data.get("code", [])}
         return {"standards": self._standards, "scaffolds": self._scaffolds, "blocks": self._blocks,

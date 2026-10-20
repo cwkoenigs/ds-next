@@ -40,7 +40,8 @@ def test_read_tools(tmp_path, canon, skills):
 def test_scaffold_tool_then_status(tmp_path, canon, skills):
     tools = agent.tools(canon, skills, tmp_path)
     listed, _ = call(tools, "scaffold_list", {})
-    assert "python-cli v3 accepted [python > cli]" in listed
+    assert "python-cli v3 accepted type=cli outputs=none [python > cli]" in listed
+    assert "ml-pipeline v3 accepted type=ml-pipeline outputs=model,features [ml-pipeline]" in listed
     got, _ = call(tools, "scaffold_get", {"id": "python-cli"})
     assert '"version": 3' in got and "About python-cli" in got
     stale, err = call(tools, "scaffold_project", {"scaffold": "python-cli", "scaffold_version": 2,
@@ -66,7 +67,7 @@ def test_capture_writes_a_canon_shaped_draft(tmp_path, canon, skills):
 
 def test_system_prompt_names_the_parts(tmp_path, canon, skills):
     p = agent.system_prompt(tmp_path, canon, skills)
-    assert "4 versioned standards" in p and "2 project scaffolds" in p and "2 procedures" in p
+    assert "4 versioned standards" in p and "3 project scaffolds" in p and "2 procedures" in p
     assert "Never ask one question at a time" in p
 
 
@@ -128,7 +129,7 @@ def test_new_completes_the_scaffold_path(canon):
     from ds_next.ui import SlashCompleter
     c = SlashCompleter({}, canon.scaffolds)
     words = lambda t: [x.text for x in c.get_completions(Document(t), None)]
-    assert words("/new ") == ["python"]
+    assert words("/new ") == ["python", "ml-pipeline"]
     assert words("/new python ") == ["cli", "draft"]
     assert words("/new python c") == ["cli"]
     assert words("/ne") == ["/new"]

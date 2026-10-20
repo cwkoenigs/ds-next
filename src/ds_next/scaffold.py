@@ -130,11 +130,12 @@ def render(a: Answers, canon: Canon, skills: Skills, today: dt.date | None = Non
         index_stamp = ""
 
     snow = f"\nIt reads and writes Snowflake in `{a.snowflake}`.\n" if a.snowflake else ""
+    outs = f"\nOutputs: {', '.join(sc.outputs)}.\n" if sc.outputs else ""
     files["README.md"] = f"""# {a.name}
 
 {local}
 {a.purpose.strip()}
-{snow}
+{snow}{outs}
 Owner: {a.owner}
 
 ## Run
@@ -180,6 +181,8 @@ None yet.
              f"tags = [{', '.join(_toml_str(t) for t in a.tags)}]",
              f'created = "{today}"', 'interview = ".ds/interview.md"',
              f'scaffold = "{sc.id}"', f"scaffold_version = {sc.version}",
+             *([f"type = {_toml_str(sc.type)}"] if sc.type else []),
+             f"outputs = [{', '.join(_toml_str(o) for o in sc.outputs)}]",
              f'ds_version = "{__version__}"', f"canon = {_toml_str(str(canon.root))}",
              f"canon_index = {_toml_str(index_stamp)}"]
     if has_lib:

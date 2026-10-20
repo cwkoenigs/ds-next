@@ -19,8 +19,9 @@ Use what they gave and do not ask for it again.
 
 ## 1. Pick the scaffold
 
-Call `scaffold_list`. Use `AskUserQuestion` with one single-select question, "Which scaffold?",
-one option per **accepted** scaffold: label = its title, description = its id, version and tags.
+Call `scaffold_list`. Use `AskUserQuestion` with one single-select question, "Which type?",
+one option per **accepted** scaffold: label = its title, description = "outputs: …" (or "no
+deployable outputs") then its id, version and tags.
 If only one scaffold is accepted, still show the picker so the user sees what they are getting.
 
 Then call `scaffold_get` with the chosen id. Keep its `version`, `tags` and `defaults`

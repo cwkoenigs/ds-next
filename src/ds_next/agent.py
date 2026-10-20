@@ -120,13 +120,16 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
         if repo is None:
             return _text(f"{cwd} is not a ds repo (no .ds/manifest.toml up the tree)")
         r = reconcile.check(repo, canon)
-        return _text(json.dumps({"summary": r.summary(), "tags": r.tags, "adopted": r.adopted,
+        return _text(json.dumps({"summary": r.summary(), "type": r.type, "outputs": r.outputs,
+                                 "tags": r.tags, "adopted": r.adopted,
                                  "declined": r.declined, "pending": r.pending,
                                  "overdue_declines": r.overdue, "errors": r.errors}, indent=1))
 
-    @tool("scaffold_list", "List the canon's project scaffolds: id, version, status, menu path, tags.", {})
+    @tool("scaffold_list", "List the canon's project types (scaffolds): id, version, status, type, the "
+          "outputs a repo of that type produces, menu path, tags.", {})
     async def scaffold_list(args):
-        return _text("\n".join(f"{sc.id} v{sc.version} {sc.status} [{' > '.join(sc.path)}] "
+        return _text("\n".join(f"{sc.id} v{sc.version} {sc.status} type={sc.type or '-'} "
+                                f"outputs={','.join(sc.outputs) or 'none'} [{' > '.join(sc.path)}] "
                                 f"tags={','.join(sc.tags)} {sc.title}" for sc in canon.scaffolds.values())
                      or "the canon has no scaffolds")
 
@@ -139,7 +142,8 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
             return _text(f"no scaffold {args['id']!r}; scaffold_list shows them", error=True)
         fetched.add((sc.id, sc.version, sc.hash))
         return _text(json.dumps({"id": sc.id, "version": sc.version, "status": sc.status,
-                                 "accepted": sc.accepted, "title": sc.title, "tags": sc.tags,
+                                 "accepted": sc.accepted, "title": sc.title, "type": sc.type,
+                                 "outputs": list(sc.outputs), "tags": sc.tags,
                                  "defaults": sc.defaults, "files": sc.files,
                                  "about": canon.scaffold_about(sc.id)}, indent=1))
 

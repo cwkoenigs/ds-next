@@ -24,6 +24,8 @@ class Report:
     pending: list[str] = field(default_factory=list)      # "id vN" strings
     overdue: list[str] = field(default_factory=list)      # declines past their revisit date
     blocks: list[str] = field(default_factory=list)       # "id vN" of accepted code in use
+    type: str = ""                                        # project type from the scaffold
+    outputs: list[str] = field(default_factory=list)      # declared outputs; publishing is not tracked yet
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -113,6 +115,11 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
         _check_blocks(manifest, canon, rep)
         return rep
     rep.tags = list(tags)
+    if isinstance(head.get("type"), str):
+        rep.type = head["type"]
+    outs = head.get("outputs", [])
+    if isinstance(outs, list) and all(isinstance(o, str) and o for o in outs):
+        rep.outputs = list(outs)
     entries = manifest.get("standards", {})
     if not isinstance(entries, dict) or not all(isinstance(e, dict) for e in entries.values()):
         rep.errors.append("[standards] must hold one table per standard, like [standards.testing]")

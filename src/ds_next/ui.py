@@ -442,8 +442,9 @@ class Repl:
         if len(candidates) == 1:
             sc = candidates[0]
         else:
-            chosen = await pick("New project from the canon. Which scaffold?",
-                                [(c.id, " › ".join(c.path), f"{c.title} · v{c.version}") for c in candidates])
+            chosen = await pick("New project from the canon. Which type?",
+                                [(c.id, " › ".join(c.path),
+                                  f"{c.title} · outputs: {', '.join(c.outputs) or 'none'} · v{c.version}") for c in candidates])
             if chosen is None:
                 self.console.print(Text("  ⎿  cancelled", style=DIM))
                 return

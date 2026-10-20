@@ -23,8 +23,10 @@ def make_canon(root: Path, bump: dict[str, int] | None = None) -> Canon:
         rows.append({"id": sid, "version": v, "title": title, "applies_to": applies, "owner": "o",
                      "supersedes": None, "status": "accepted", "hash": "x", "path": f"{sid}.md"})
     scaffolds = []
-    for sid, status, path, tags in [("python-cli", "accepted", ["python", "cli"], ["python", "package", "cli"]),
-                                    ("python-draft", "proposed", ["python", "draft"], ["python"])]:
+    for sid, status, path, tags, typ, outs in [
+            ("python-cli", "accepted", ["python", "cli"], ["python", "package", "cli"], "cli", []),
+            ("python-draft", "proposed", ["python", "draft"], ["python"], "", []),
+            ("ml-pipeline", "accepted", ["ml-pipeline"], ["python", "package", "ml"], "ml-pipeline", ["model", "features"])]:
         d = root / "scaffolds" / sid
         files = {"pyproject.toml": '[project]\nname = "{{name}}"\ndescription = {{purpose_json}}\n'
                                    'dependencies = []\n\n[dependency-groups]\ndev = ["pytest>=8"]\n',
@@ -38,7 +40,8 @@ def make_canon(root: Path, bump: dict[str, int] | None = None) -> Canon:
         for rel in sorted(files):
             digest.update(f"files/{rel}".encode() + (d / "files" / rel).read_bytes())
         scaffolds.append({"id": sid, "version": 3, "title": f"T {sid}", "path": path, "tags": tags,
-                          "owner": "o", "status": status, "defaults": {"test_cmd": "uv run pytest -q"},
+                          "owner": "o", "status": status, "type": typ, "outputs": outs,
+                          "defaults": {"test_cmd": "uv run pytest -q"},
                           "hash": digest.hexdigest()[:12], "dir": f"scaffolds/{sid}", "files": sorted(files)})
     blocks = []
     for bid, status, version in [("block-demo", "accepted", (bump or {}).get("block-demo", 1)),
