@@ -71,3 +71,24 @@ def test_form_choice_field_cycles_with_arrows_and_space():
     # → once picks ml; a space typed in the name field is still a space
     out = drive(lambda: form("t", fields(), footer, lambda v: None), "\x1b[C\ta b\r")
     assert out == {"type": "ml", "name": "a b"}
+
+
+def test_form_normalizes_and_checks_as_you_type():
+    from ds_next.scaffold import name_problem, normalize_name
+    fields = lambda: [Field("name", "name", "", required=True, example="feed-model",
+                            normalize=normalize_name, check=name_problem)]
+    out = drive(lambda: form("t", fields(), lambda v: "", lambda v: None), "Feed Model_v2\r")
+    assert out == {"name": "feed-model-v2"}
+    # a trailing hyphen breaks the rule: Enter is refused, backspace fixes it, Enter goes through
+    out = drive(lambda: form("t", fields(), lambda v: "", lambda v: None), "feed-\r\x7f\r")
+    assert out == {"name": "feed"}
+
+
+def test_normalize_name_examples():
+    from ds_next.scaffold import name_problem, normalize_name
+    assert normalize_name("  Barn  Board") == "barn-board"
+    assert normalize_name("feed__model") == "feed-model"
+    assert normalize_name("-x--y!") == "x-y"
+    assert name_problem("feed-model") is None
+    assert name_problem("class") and "keyword" in name_problem("class")
+    assert name_problem("a") and "2 to 41" in name_problem("a")

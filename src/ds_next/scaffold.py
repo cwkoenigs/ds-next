@@ -27,6 +27,25 @@ from .kb import Canon, Skills, json_str
 RECOMMENDED_SKILLS = ("so-build-feature-interview", "so-bug-review-interview",
                       "so-best-practice-audit", "so-capture", "so-changes")
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,40}$")
+NAME_RULE = "lowercase words joined by hyphens, like ds-next ([[repo-naming]])"
+
+
+def normalize_name(text: str) -> str:
+    """What a person typed, bent toward the rule: lowercase, spaces and underscores to hyphens,
+    nothing but a-z 0-9 and -. Leading hyphens and doubled hyphens are dropped as they appear."""
+    out = re.sub(r"[\s_]+", "-", text.lower())      # not stripped: a space just typed becomes the hyphen
+    out = re.sub(r"[^a-z0-9-]", "", out)
+    out = re.sub(r"-{2,}", "-", out)
+    return out.lstrip("-")
+
+
+def name_problem(name: str) -> str | None:
+    if not NAME_RE.match(name) or name.endswith("-") or "--" in name:
+        return f"{NAME_RULE}; 2 to 41 characters"
+    pkg = name.replace("-", "_")
+    if keyword.iskeyword(pkg) or keyword.issoftkeyword(pkg):
+        return f"{name!r} would make the package a Python keyword"
+    return None
 TAG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,30}$")
 
 

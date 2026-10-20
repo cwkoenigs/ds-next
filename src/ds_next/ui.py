@@ -449,10 +449,12 @@ class Repl:
         fields = [
             Field("type", "type", candidates[0].id, "←/→ or space to change the project type",
                   choices=[(c.id, describe(c)) for c in candidates]),
-            Field("name", "name", name, "lowercase-with-dashes; also the folder name", True),
+            Field("name", "name", name, scaffold.NAME_RULE, True, example="feed-model",
+                  normalize=scaffold.normalize_name, check=scaffold.name_problem),
             Field("purpose", "purpose", " ".join(rest[1:]) if name else " ".join(rest),
-                  "one line: what it does and for whom", True),
-            Field("owner", "owner", scaffold._git_user(), "who answers for this repo"),
+                  "one line: what it does and for whom", True,
+                  example="Weekly feed use per barn, for the barn managers"),
+            Field("owner", "owner", scaffold._git_user(), "who answers for this repo; the git user by default"),
         ]
 
         def answers(v: dict[str, str]) -> scaffold.Answers:

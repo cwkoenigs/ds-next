@@ -76,6 +76,9 @@ class Field:
     hint: str = ""
     required: bool = False
     choices: list[tuple[str, str]] | None = None   # (value, label): a field you cycle with ←/→ or space
+    example: str = ""                               # shown as "e.g. …" while the field is empty
+    normalize: Callable[[str], str] | None = None   # rewrites the text as it is typed (lowercase, spaces to dashes)
+    check: Callable[[str], str | None] | None = None  # a message shown in red while the text breaks a rule
 
 
 async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]], str],
@@ -105,6 +108,18 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
     order = [areas[f.key] for f in fields]
     error = {"msg": ""}
 
+    def normalizer(f: Field):
+        def on_change(buf):
+            fixed = f.normalize(buf.text)
+            if fixed != buf.text:
+                buf.text = fixed
+                buf.cursor_position = len(fixed)
+        return on_change
+
+    for f in fields:
+        if f.normalize and not f.choices:
+            areas[f.key].buffer.on_text_changed += normalizer(f)
+
     def values() -> dict[str, str]:
         return {f.key: (f.choices[chosen[f.key]][0] if f.choices else areas[f.key].text.strip()) for f in fields}
 
@@ -121,9 +136,21 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
 
     def hint():
         focused = next((f for f in fields if get_app().layout.has_focus(areas[f.key])), None)
-        parts = [("class:dim", f"   {focused.hint}\n" if focused and focused.hint else "\n")]
-        parts.append(("class:accent", f"   {footer(values())}\n"))
-        if error["msg"]:
+        v = values()
+        line = ""
+        if focused:
+            bits = []
+            if focused.example and not v[focused.key]:
+                bits.append(f"e.g. {focused.example}")
+            if focused.hint:
+                bits.append(focused.hint)
+            line = " · ".join(bits)
+        parts = [("class:dim", f"   {line}\n" if line else "\n")]
+        parts.append(("class:accent", f"   {footer(v)}\n"))
+        live = focused.check(v[focused.key]) if focused and focused.check and v[focused.key] else None
+        if live:
+            parts.append(("class:error", f"   {live}\n"))
+        elif error["msg"]:
             parts.append(("class:error", f"   {error['msg']}\n"))
         keys = "←/→ change · " if focused_choice() else ""
         parts.append(("class:dim", f"   {keys}Tab/↓ next · ↑ back · Enter submit · Esc cancel"))
@@ -175,7 +202,8 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
     def _submit(e):
         v = values()
         missing = next((f for f in fields if f.required and not v[f.key]), None)
-        problem = (missing.key, f"{missing.label} is required") if missing else validate(v)
+        broken = next(((f.key, f.check(v[f.key])) for f in fields if f.check and v[f.key] and f.check(v[f.key])), None)
+        problem = (missing.key, f"{missing.label} is required") if missing else broken or validate(v)
         if problem:
             error["msg"] = problem[1]
             e.app.layout.focus(areas[problem[0]])
