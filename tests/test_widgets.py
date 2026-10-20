@@ -65,9 +65,9 @@ def test_form_choice_field_cycles_with_arrows_and_space():
                       Field("name", "name", "", required=True)]
     seen = []
     footer = lambda v: seen.append(v["type"]) or v["type"]
-    # focus starts on name (first empty required text field); Shift-Tab back to type, → twice, space once wraps
-    out = drive(lambda: form("t", fields(), footer, lambda v: None), "x\x1b[Z\x1b[C\x1b[C \r")
+    # focus starts on the first field, the type: → twice and space once wraps back to cli; Tab to name
+    out = drive(lambda: form("t", fields(), footer, lambda v: None), "\x1b[C\x1b[C \tx\r")
     assert out == {"type": "cli", "name": "x"}
-    # typing a space in a text field is still a space
-    out = drive(lambda: form("t", fields(), footer, lambda v: None), "a b\x1b[Z\x1b[C\r")
+    # → once picks ml; a space typed in the name field is still a space
+    out = drive(lambda: form("t", fields(), footer, lambda v: None), "\x1b[C\ta b\r")
     assert out == {"type": "ml", "name": "a b"}

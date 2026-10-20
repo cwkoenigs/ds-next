@@ -190,7 +190,7 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
     rows = [Window(FormattedTextControl(FormattedText([("class:title", f" {title}\n")])), height=2)]
     rows += [VSplit([label(f), areas[f.key]]) for f in fields]
     rows.append(Window(FormattedTextControl(hint), dont_extend_height=True))
-    first = next((areas[f.key] for f in fields if f.required and not f.value and not f.choices), order[0])
+    first = order[0]      # top to bottom, as the eye reads it
     app = Application(layout=Layout(HSplit(rows), focused_element=first), key_bindings=kb, style=STYLE,
                       full_screen=False, erase_when_done=True)
     return await app.run_async()
