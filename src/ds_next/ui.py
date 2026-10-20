@@ -439,22 +439,16 @@ class Repl:
         if not candidates:
             self.console.print(Text("The canon has no accepted scaffold for that. /new alone lists them.", style="red"))
             return
-        if len(candidates) == 1:
-            sc = candidates[0]
-        else:
-            chosen = await pick("New project from the canon. Which type?",
-                                [(c.id, " › ".join(c.path),
-                                  f"{c.title} · outputs: {', '.join(c.outputs) or 'none'} · v{c.version}") for c in candidates])
-            if chosen is None:
-                self.console.print(Text("  ⎿  cancelled", style=DIM))
-                return
-            sc = self.canon.scaffolds[chosen]
-        self.console.print(_bullet(Text.assemble(("Scaffold ", ""), (sc.id, "bold"), (f" v{sc.version} · {sc.title}", DIM)),
-                                   style="green"))
+        by_id = {c.id: c for c in candidates}
         name = rest[0] if rest and scaffold.NAME_RE.match(rest[0]) else ""
         # Three answers. The type decides the rest (tags, test and lint commands); standards are
         # declined later, from /status, when one actually gets in the way.
+        def describe(c: Scaffold) -> str:
+            return f"{c.title} · outputs: {', '.join(c.outputs) or 'none'}"
+
         fields = [
+            Field("type", "type", candidates[0].id, "←/→ or space to change the project type",
+                  choices=[(c.id, describe(c)) for c in candidates]),
             Field("name", "name", name, "lowercase-with-dashes; also the folder name", True),
             Field("purpose", "purpose", " ".join(rest[1:]) if name else " ".join(rest),
                   "one line: what it does and for whom", True),
@@ -462,12 +456,12 @@ class Repl:
         ]
 
         def answers(v: dict[str, str]) -> scaffold.Answers:
-            return scaffold.Answers(name=v["name"], purpose=v["purpose"], scaffold=sc.id, owner=v["owner"])
+            return scaffold.Answers(name=v["name"], purpose=v["purpose"], scaffold=v["type"], owner=v["owner"])
 
         def footer(v: dict[str, str]) -> str:
-            n = len(self.canon.applicable(list(sc.tags)))
-            outs = f" · outputs: {', '.join(sc.outputs)}" if sc.outputs else ""
-            return f"{n} standards apply{outs} · tags {', '.join(sc.tags)}"
+            c = by_id[v["type"]]
+            n = len(self.canon.applicable(list(c.tags)))
+            return f"{n} standards apply · v{c.version} · tags {', '.join(c.tags)}"
 
         def validate(v: dict[str, str]):
             try:
@@ -482,10 +476,13 @@ class Repl:
                 return ("name", f"{a.name}/ already exists here")
             return None
 
-        v = await form(f"{sc.title} · fill in, check, Enter", fields, footer, validate)
+        v = await form("New project from the canon · fill in, check, Enter", fields, footer, validate)
         if v is None:
             self.console.print(Text("  ⎿  cancelled", style=DIM))
             return
+        sc = by_id[v["type"]]
+        self.console.print(_bullet(Text.assemble(("Scaffold ", ""), (sc.id, "bold"), (f" v{sc.version} · {sc.title}", DIM)),
+                                   style="green"))
         a = answers(v).resolve(self.canon)
         draft = {"scaffold": sc.id, "name": a.name, "purpose": a.purpose, "owner": a.owner}
         shown = Text()

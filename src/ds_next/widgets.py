@@ -75,6 +75,7 @@ class Field:
     value: str = ""
     hint: str = ""
     required: bool = False
+    choices: list[tuple[str, str]] | None = None   # (value, label): a field you cycle with ←/→ or space
 
 
 async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]], str],
@@ -82,13 +83,33 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
     """Every field on one screen, already filled with a suggestion. Tab/↓ and Shift-Tab/↑ move,
     Enter submits from any field. `validate` returns (field key, message) to refuse a submit;
     `footer` is recomputed on every keystroke."""
-    areas = {f.key: TextArea(text=f.value, multiline=False, wrap_lines=False, style="class:field")
-             for f in fields}
+    chosen = {f.key: max(0, next((i for i, (v, _) in enumerate(f.choices) if v == f.value), 0))
+              for f in fields if f.choices}
+
+    def choice_text(f: Field):
+        def get():
+            on = get_app().layout.has_focus(areas[f.key])
+            i = chosen[f.key]
+            return FormattedText([("class:accent" if on else "class:field",
+                                   f"‹ {f.choices[i][1]} ›"),
+                                  ("class:dim", f"   {i + 1}/{len(f.choices)}" if on else "")])
+        return get
+
+    areas = {}
+    for f in fields:
+        if f.choices:
+            areas[f.key] = Window(FormattedTextControl(choice_text(f), focusable=True), height=1,
+                                  dont_extend_height=True)
+        else:
+            areas[f.key] = TextArea(text=f.value, multiline=False, wrap_lines=False, style="class:field")
     order = [areas[f.key] for f in fields]
     error = {"msg": ""}
 
     def values() -> dict[str, str]:
-        return {k: a.text.strip() for k, a in areas.items()}
+        return {f.key: (f.choices[chosen[f.key]][0] if f.choices else areas[f.key].text.strip()) for f in fields}
+
+    def focused_choice() -> Field | None:
+        return next((f for f in fields if f.choices and get_app().layout.has_focus(areas[f.key])), None)
 
     def label(f: Field):
         def get():
@@ -104,7 +125,8 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
         parts.append(("class:accent", f"   {footer(values())}\n"))
         if error["msg"]:
             parts.append(("class:error", f"   {error['msg']}\n"))
-        parts.append(("class:dim", "   Tab/↓ next · ↑ back · Enter submit · Esc cancel"))
+        keys = "←/→ change · " if focused_choice() else ""
+        parts.append(("class:dim", f"   {keys}Tab/↓ next · ↑ back · Enter submit · Esc cancel"))
         return FormattedText(parts)
 
     kb = KeyBindings()
@@ -122,6 +144,32 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
     @kb.add("up")
     def _prev(e):
         move(-1)
+
+    def cycle(step: int):
+        f = focused_choice()
+        if f is not None:
+            chosen[f.key] = (chosen[f.key] + step) % len(f.choices)
+
+    @kb.add("right")
+    def _right(e):
+        if focused_choice() is not None:
+            cycle(1)
+        else:
+            e.app.current_buffer.cursor_right()
+
+    @kb.add(" ")
+    def _space(e):
+        if focused_choice() is not None:
+            cycle(1)
+        else:
+            e.app.current_buffer.insert_text(" ")
+
+    @kb.add("left")
+    def _cycle_prev(e):
+        if focused_choice() is not None:
+            cycle(-1)
+        else:
+            e.app.current_buffer.cursor_left()
 
     @kb.add("enter")
     def _submit(e):
@@ -142,7 +190,7 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
     rows = [Window(FormattedTextControl(FormattedText([("class:title", f" {title}\n")])), height=2)]
     rows += [VSplit([label(f), areas[f.key]]) for f in fields]
     rows.append(Window(FormattedTextControl(hint), dont_extend_height=True))
-    first = next((areas[f.key] for f in fields if f.required and not f.value), order[0])
+    first = next((areas[f.key] for f in fields if f.required and not f.value and not f.choices), order[0])
     app = Application(layout=Layout(HSplit(rows), focused_element=first), key_bindings=kb, style=STYLE,
                       full_screen=False, erase_when_done=True)
     return await app.run_async()

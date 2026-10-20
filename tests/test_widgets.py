@@ -58,3 +58,16 @@ def test_pick_arrows_and_enter():
     opts = [("a", "A", ""), ("b", "B", ""), ("c", "C", "")]
     assert drive(lambda: pick("t", opts), "\x1b[B\x1b[B\r") == "c"
     assert drive(lambda: pick("t", opts), "2") == "b"
+
+
+def test_form_choice_field_cycles_with_arrows_and_space():
+    fields = lambda: [Field("type", "type", "cli", choices=[("cli", "CLI"), ("ml", "ML pipeline"), ("app", "App")]),
+                      Field("name", "name", "", required=True)]
+    seen = []
+    footer = lambda v: seen.append(v["type"]) or v["type"]
+    # focus starts on name (first empty required text field); Shift-Tab back to type, → twice, space once wraps
+    out = drive(lambda: form("t", fields(), footer, lambda v: None), "x\x1b[Z\x1b[C\x1b[C \r")
+    assert out == {"type": "cli", "name": "x"}
+    # typing a space in a text field is still a space
+    out = drive(lambda: form("t", fields(), footer, lambda v: None), "a b\x1b[Z\x1b[C\r")
+    assert out == {"type": "ml", "name": "a b"}
