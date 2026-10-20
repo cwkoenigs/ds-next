@@ -302,6 +302,8 @@ class Repl:
     def banner(self) -> None:
         shell = "found" if docs_shell_path() else "not found"
         body = Group(
+            Text.assemble(("▼ ds-next", "bold"), (f"  v{__version__}", DIM)),
+            Text(""),
             Text("Start, check and grow projects from the team's canon."),
             Text(""),
             Text("/new starts a project · /help lists commands · /exit leaves", style=DIM),
@@ -311,8 +313,7 @@ class Repl:
                  f"at {_tilde(self.canon.root)}", style=DIM),
             Text(f"skills: {len(self.skills.all)} from skills-os · docs-ds {shell}", style=DIM),
         )
-        self.console.print(Panel(body, title=f"[bold]▼ ds-next[/bold] [dim]v{__version__}[/dim]", title_align="left",
-                                 border_style=BRAND, expand=False, padding=(0, 2)))
+        self.console.print(Panel(body, border_style=BRAND, expand=False, padding=(0, 2)))
         self.console.print()
 
     def _refresh_where(self) -> None:
