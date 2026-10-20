@@ -22,8 +22,10 @@ def test_frames_are_exact_at_80_and_60():
 
 def test_banner_is_exact_and_names_the_facts():
     lines = S.banner("v0.1.0", [("cwd", "~/x"), ("canon", "33 standards · 5 project types")],
-                     ["/new starts a project"], "~/Developer/canon", "start, check and grow", w=80)
+                     ["/new starts a project"], "~/Developer/canon", "start, check and grow", w=80,
+                     art=S.mark_lines())
     assert all(width_of(ln) == 80 for ln in lines)
+    assert all(width_of(ln) <= 28 for ln in S.mark_lines())
     text = "\n".join(ln.plain for ln in lines)
     assert "ds-next" in text and "33 standards" in text and "~/Developer/canon" in text
 

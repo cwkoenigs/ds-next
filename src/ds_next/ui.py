@@ -313,7 +313,8 @@ class Repl:
                  ("model", f"{self.agent.model or 'auto'} · effort {self.agent.effort or 'default'}")]
         for line in S.banner(f"v{__version__}", facts,
                              ["/new starts a project · /help lists commands", "ctrl-d leaves · ctrl-c twice too"],
-                             _tilde(self.canon.root, 60), "start, check and grow", w=S.width(self.console)):
+                             _tilde(self.canon.root, 60), "start, check and grow", w=S.width(self.console),
+                             art=S.mark_lines()):
             self.console.print(line)
         self.console.print()
 

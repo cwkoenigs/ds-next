@@ -222,15 +222,38 @@ def frame(title: Text | str, rows: list[Text | None], *, kind: str = "input", ke
     return out
 
 
+# The team mark: "ds" in block letters, drawn for the banner's left pane the way Cortex draws its
+# bird. Sparks in dim, letters in the accent. Each row is at most 26 cells.
+MARK = (
+    "          ▄▄    *         ",
+    "     *    ██      ▄▄▄▄▄▄  ",
+    "   ▄▄▄▄▄▄ ██     ██       ",
+    "  ██    ████  *   ▀▀▀▀▀▄  ",
+    "  ██    ████          ██ *",
+    " * ▀▀▀▀▀▀▀██    ▀▀▀▀▀▀▀   ",
+)
+
+
+def mark_lines() -> list[Text]:
+    out = []
+    for row in MARK:
+        t = Text("  ")
+        for ch in row:
+            t.append(ch, "dim" if ch == "*" else "accent")
+        out.append(t)
+    return out
+
+
 def banner(version: str, facts: list[tuple[str, str]], hints: list[str], path: str, tagline: str,
-           w: int = DESIGN_WIDTH) -> list[Text]:
-    """Two-pane frame shown once: word-mark left, facts right, path on a footer row."""
+           w: int = DESIGN_WIDTH, art: list[Text] | None = None) -> list[Text]:
+    """Two-pane frame shown once: the mark and word-mark left, facts right, path on a footer row."""
     li = 30
     ri = w - 3 - li
     title = Text.assemble(("ds-next", "strong"), (f" {version}", "accent"))
     e = "muted"            # the one decorative frame: a visible edge, a bright title, as Cortex draws it
     out = [Text.assemble(("┌─ ", e), title, (" " + "─" * (li - 3 - title.cell_len) + "┬" + "─" * ri + "┐", e))]
-    left: list[Text] = [Text(), Text(), Text.assemble("  ", ("ds-next", "strong")), Text("  " + tagline, style="accent")]
+    left: list[Text] = [Text(), *(art or []), Text(), Text.assemble("  ", ("ds-next", "strong")),
+                        Text("  " + tagline, style="accent")]
     right: list[Text] = [Text()] + [Text.assemble(("  " + f"{k:<{LABEL_W}} ", "accent"), v) for k, v in facts] + [Text()]
     right += [Text("  " + h, style="muted") for h in hints]
     for i in range(max(len(left), len(right))):
