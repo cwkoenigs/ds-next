@@ -82,7 +82,7 @@ def test_render_like_claude_code():
     out = con.export_text()
     assert "● Here are the standards." in out
     assert "→ canon_read testing" in out and "→ Bash uv run pytest -q" in out
-    assert "⎿ # Testing" in out and "2 more lines" in out and "╰ 2 turns · 1.5s" in out
+    assert "⎿ # Testing" in out and "2 more lines" in out and "╰ #1 · 2 tool calls · 1.5s" in out
     assert state["last_result"].startswith("# Testing")
 
 
@@ -128,7 +128,7 @@ def test_new_completes_the_scaffold_path(canon):
     from prompt_toolkit.document import Document
 
     from ds_next.ui import SlashCompleter
-    c = SlashCompleter({}, canon.scaffolds)
+    c = SlashCompleter({"/new": "x"}, {}, canon.scaffolds)
     words = lambda t: [x.text for x in c.get_completions(Document(t), None)]
     assert words("/new ") == ["python", "ml-pipeline"]
     assert words("/new python ") == ["cli", "draft"]

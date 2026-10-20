@@ -84,9 +84,9 @@ def _arg_summary(inp: dict[str, Any]) -> str:
     for key in ("command", "file_path", "path", "pattern", "id", "name", "query", "url", "title"):
         if key in inp and isinstance(inp[key], str):
             v = inp[key].replace("\n", " ")
-            return v if len(v) <= 70 else v[:67] + "…"
+            return v if len(v) <= 60 else v[:57] + "…"
     s = json.dumps(inp, ensure_ascii=False)
-    return "" if s == "{}" else (s if len(s) <= 70 else s[:67] + "…")
+    return "" if s == "{}" else (s if len(s) <= 60 else s[:57] + "…")
 
 
 def _adoption_mark(s: Any, rep: Any) -> Text:
@@ -132,6 +132,7 @@ def render(console: Console, msg: Any, state: dict) -> None:
             elif isinstance(b, ToolUseBlock):
                 state["step"] = f"Running {_short(b.name)}"
                 state.setdefault("tools", {})[b.id] = b.name
+                state["calls"] = state.get("calls", 0) + 1
                 console.print(S.run(_short(b.name), _arg_summary(b.input)))
     elif isinstance(msg, UserMessage) and isinstance(msg.content, list):
         for b in msg.content:
@@ -140,14 +141,15 @@ def render(console: Console, msg: Any, state: dict) -> None:
                 text = _result_text(b)
                 lines = text.splitlines() or ["(no output)"]
                 state["last_result"] = text                      # /last prints it in full
-                console.print(S.result(lines[0][:72], more=len(lines) - 1,
-                                       error=b.is_error or text.startswith("ERROR:")))
+                error = b.is_error or text.startswith("ERROR:")
+                first = lines[0].removeprefix("ERROR:").strip() if error else lines[0]
+                console.print(S.result(("ERROR " if error else "") + first[:66], more=len(lines) - 1, error=error))
     elif isinstance(msg, SystemMessage) and msg.subtype == "init":
         state["model"] = msg.data.get("model")
     elif isinstance(msg, ResultMessage):
         secs = msg.duration_ms / 1000
-        n = state.get("turn_no")
-        parts = ([f"#{n}"] if n else []) + [f"{msg.num_turns} turn{'s' if msg.num_turns != 1 else ''}", f"{secs:.1f}s"]
+        n = state.get("calls", 0)
+        parts = [f"#{state.get('turn_no', 1)}", f"{n} tool call{'s' if n != 1 else ''}", f"{secs:.1f}s"]
         if msg.total_cost_usd:
             parts.append(f"${msg.total_cost_usd:.4f}")
         if msg.is_error or msg.subtype != "success":
@@ -251,8 +253,9 @@ def describe_permission(tool_name: str, inp: dict[str, Any]) -> tuple[str, str]:
 class SlashCompleter(Completer):
     """Commands, then for /new the scaffold menu path one word at a time: /new python cli."""
 
-    def __init__(self, extra: dict[str, str], scaffolds: dict[str, Scaffold] | None = None):
-        self.items = {**COMMANDS, **extra}
+    def __init__(self, commands: dict[str, str], skills: dict[str, str], scaffolds: dict[str, Scaffold] | None = None):
+        self.items = {**{c: (d, "command") for c, d in commands.items()},
+                      **{f"/{n}": (d, "skill") for n, d in skills.items()}}
         self.scaffolds = scaffolds or {}
 
     def get_completions(self, document, complete_event):
@@ -271,9 +274,10 @@ class SlashCompleter(Completer):
             return
         if not text.startswith("/") or " " in text:
             return
-        for cmd, desc in self.items.items():
+        for cmd, (desc, kind) in self.items.items():
             if cmd.startswith(text):
-                yield Completion(cmd, start_position=-len(text), display_meta=desc[:60])
+                meta = _first_sentence(desc, 46).ljust(46) + f"  {kind:>8}"
+                yield Completion(cmd, start_position=-len(text), display=cmd.ljust(20), display_meta=meta)
 
 
 class Repl:
@@ -296,7 +300,7 @@ class Repl:
         home.mkdir(exist_ok=True)
         self.session = PromptSession(
             history=FileHistory(str(home / "history")),
-            completer=SlashCompleter({f"/{n}": s.description for n, s in self.skills.all.items()},
+            completer=SlashCompleter(COMMANDS, {n: s.description for n, s in self.skills.all.items()},
                                      self.canon.scaffolds),
             complete_while_typing=True,
             bottom_toolbar=self._toolbar,
@@ -306,15 +310,14 @@ class Repl:
     # -- chrome
     def banner(self) -> None:
         shell = "found" if docs_shell_path() else "not found"
-        facts = [("cwd", _tilde(self.cwd, 40)),
+        facts = [("cwd", _tilde(self.cwd, 30)),
                  ("canon", f"{len(self.canon.standards)} standards · {len(self.canon.scaffolds)} project types"),
                  ("skills", f"{len(self.skills.all)} from skills-os"),
                  ("docs", f"docs-ds {shell}"),
                  ("model", f"{self.agent.model or 'auto'} · effort {self.agent.effort or 'default'}")]
         for line in S.banner(f"v{__version__}", facts,
                              ["/new starts a project · /help lists commands", "ctrl-d leaves · ctrl-c twice too"],
-                             _tilde(self.canon.root, 60), "start, check and grow", w=S.width(self.console),
-                             art=S.mark_lines()):
+                             _tilde(self.canon.root, 60), "start, check and grow", w=S.width(self.console)):
             self.console.print(line)
         self.console.print()
 
@@ -412,6 +415,8 @@ class Repl:
         r = reconcile.check(repo, self.canon)
         kind = "ok" if r.ok and not r.pending else ("warn" if r.ok else "err")
         self.console.print(S.outcome(kind, repo.name, r.counts()))
+        if r.type:
+            self.console.print(S.labelled("type", r.type))
         if r.outputs:
             self.console.print(S.labelled("outputs", Text.assemble((", ".join(r.outputs), "bold"),
                                                                    (f" · {r.type} type · publishing not tracked yet", "muted"))))
@@ -505,7 +510,7 @@ class Repl:
         def footer(v: dict[str, str]) -> str:
             c = by_id[v["type"]]
             n = len(self.canon.applicable(list(c.tags)))
-            return f"{n} standards apply · v{c.version} · tags {', '.join(c.tags)}"
+            return f"{n} standards apply · {c.id} v{c.version} · {', '.join(c.tags)}"
 
         def validate(v: dict[str, str]):
             try:
@@ -520,14 +525,15 @@ class Repl:
                 return ("name", f"{a.name}/ already exists here")
             return None
 
-        v = await form("New project from the canon", fields, footer, validate)
+        v = await form("New project from the canon", fields, footer, validate, width=S.width(self.console))
         if v is None:
             self.console.print(S.hint("cancelled"))
             return
         sc = by_id[v["type"]]
         a = answers(v).resolve(self.canon)
         draft = {"scaffold": sc.id, "name": a.name, "purpose": a.purpose, "owner": a.owner}
-        self.console.print(S.outcome("ok", sc.id, f"v{sc.version} · {a.name} · {a.purpose}"))
+        self.console.print(S.outcome("ok", sc.id, f"v{sc.version} · {a.name} · {a.purpose[:40]}{'…' if len(a.purpose) > 40 else ''}"))
+        self.console.print()
         self.approver.draft = draft
         await self.turn("New project draft from the /new form. Review it against the canon, then fetch the "
                         f"accepted scaffold and create it, as your instructions say.\n\n{json.dumps(draft, indent=1)}")
@@ -539,17 +545,18 @@ class Repl:
                     self.console.print(line)
                 return
             await self.agent.set_effort(arg)
-        self.console.print(S.hint(f"effort {self.agent.effort or 'default'}"))
+        self.console.print(S.labelled("effort", self.agent.effort or "default"))
 
     async def cmd_model(self, arg: str) -> None:
         if arg:
             await self.agent.set_model(arg)
-        self.console.print(S.hint(f"model {self.agent.model or self.state.get('model') or 'auto'}"))
+        self.console.print(S.labelled("model", self.agent.model or self.state.get("model") or "auto"))
 
     async def cmd_clear(self, _: str) -> None:
         await self.agent.reset()
         self.approver.reset()
         self.state.clear()
+        self.turn_no = 0
         self.console.clear()
         self.banner()
 
@@ -570,7 +577,7 @@ class Repl:
         started = time.monotonic()
 
         self.turn_no += 1
-        self.state["turn_no"] = self.turn_no
+        self.state.update(turn_no=self.turn_no, calls=0)
         self.console.print(Text(f"#{self.turn_no}", style="dim"))
 
         def label() -> str:
@@ -581,7 +588,7 @@ class Repl:
 
         async def tick():
             while True:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(1.0)
                 if self._status:
                     self._status.update(label())
 

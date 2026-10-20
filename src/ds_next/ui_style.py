@@ -29,6 +29,10 @@ PALETTE = {
     "key":     ("bold #1d1f20 on #94bce3", "bold #f2f2f3 on #416180", "bold black on cyan"),
     "surface": ("on #2b2b2d", "on #e9e9ea", "on bright_black"),
     "hl":      ("on #2c455d", "on #c9dcee", "reverse"),
+    "eye":     ("#1d1f20", "#f2f2f3", "black"),          # mascot eyes: the terminal ground
+    "on_brand": ("on #749dc4", "on #5980a6", "on blue"),
+    "on_strong": ("on #b5d9fd", "on #2c455d", "on cyan"),
+    "on_eye":  ("on #1d1f20", "on #f2f2f3", "on black"),
 }
 
 
@@ -200,6 +204,55 @@ def error(what: str, fix: str = "") -> list[Text]:
     return out
 
 
+# ── the mascot: dog (steel) and cat (light accent), arms around each other ─────
+# 28×20 pixels, drawn with half-blocks so each text row carries two pixel rows.
+# D dog · C cat · k eye/nose (terminal background) · . empty
+MASCOT = """\
+............................
+................C......C....
+....DDDDDD......CC....CC....
+..DDDDDDDDDD....CCCCCCCCC...
+.DDDDDDDDDDDD..CCCCCCCCCCC..
+.DDDDDDDDDDDD..CCCCCCCCCCC..
+.DDDkkDDDkkDD..CCkkCCCCkkC..
+.DDDkkDDDkkDD..CCkkCCCCkkC..
+.DDDDDDDDDDDD..CCCCCCCCCCC..
+.DDDDDkkDDDDD..CCCCCkkCCCC..
+.DD.DDDDDD.DD...CCCCCCCCC...
+....DDDDDD........CCCCC.....
+..CCCDDDDDDDDDCCCCCCCCCDDD..
+..CDDDDDDDDDDDCCCCCCCCCCCD..
+..DDDDDDDDDDD..CCCCCCCCCC...
+..DDDDDDDDDDD..CCCCCCCCCC.C.
+..DDDDDDDDDDD..CCCCCCCCCCCC.
+..DDDDDDDDDDD..CCCCCCCCCC...
+..DDD..DDD.....CCC..CCC.....
+..DDD..DDD.....CCC..CCC.....
+""".splitlines()
+_INK = {"D": "brand", "C": "strong", "k": "eye"}
+
+
+def mascot_lines() -> list[Text]:
+    """MASCOT as 10 Rich lines of ▀▄█: top pixel = foreground, bottom pixel = background."""
+    out = []
+    for top, bot in zip(MASCOT[0::2], MASCOT[1::2]):
+        t = Text()
+        for a, b in zip(top, bot):
+            ia, ib = _INK.get(a), _INK.get(b)
+            if not ia and not ib:
+                t.append(" ")
+            elif ia == ib:
+                t.append("█", style=ia)
+            elif ia and ib:
+                t.append("▀", style=f"{ia} on_{ib}")
+            elif ia:
+                t.append("▀", style=ia)
+            else:
+                t.append("▄", style=ib)
+        out.append(t)
+    return out
+
+
 # ── frames: a frame means "needs you" ────────────────────────────────────────
 def frame(title: Text | str, rows: list[Text | None], *, kind: str = "input", keys: Text | None = None,
           w: int = DESIGN_WIDTH, prefix: Text | None = None) -> list[Text]:
@@ -222,28 +275,6 @@ def frame(title: Text | str, rows: list[Text | None], *, kind: str = "input", ke
     return out
 
 
-# The team mark: "ds" in block letters, drawn for the banner's left pane the way Cortex draws its
-# bird. Sparks in dim, letters in the accent. Each row is at most 26 cells.
-MARK = (
-    "          ▄▄    *         ",
-    "     *    ██      ▄▄▄▄▄▄  ",
-    "   ▄▄▄▄▄▄ ██     ██       ",
-    "  ██    ████  *   ▀▀▀▀▀▄  ",
-    "  ██    ████          ██ *",
-    " * ▀▀▀▀▀▀▀██    ▀▀▀▀▀▀▀   ",
-)
-
-
-def mark_lines() -> list[Text]:
-    out = []
-    for row in MARK:
-        t = Text("  ")
-        for ch in row:
-            t.append(ch, "dim" if ch == "*" else "accent")
-        out.append(t)
-    return out
-
-
 def banner(version: str, facts: list[tuple[str, str]], hints: list[str], path: str, tagline: str,
            w: int = DESIGN_WIDTH, art: list[Text] | None = None) -> list[Text]:
     """Two-pane frame shown once: the mark and word-mark left, facts right, path on a footer row."""
@@ -252,8 +283,8 @@ def banner(version: str, facts: list[tuple[str, str]], hints: list[str], path: s
     title = Text.assemble(("ds-next", "strong"), (f" {version}", "accent"))
     e = "muted"            # the one decorative frame: a visible edge, a bright title, as Cortex draws it
     out = [Text.assemble(("┌─ ", e), title, (" " + "─" * (li - 3 - title.cell_len) + "┬" + "─" * ri + "┐", e))]
-    left: list[Text] = [Text(), *(art or []), Text(), Text.assemble("  ", ("ds-next", "strong")),
-                        Text("  " + tagline, style="accent")]
+    left: list[Text] = [*(art if art is not None else mascot_lines()), Text(),
+                        Text.assemble("  ", ("ds-next", "strong")), Text("  " + tagline, style="accent")]
     right: list[Text] = [Text()] + [Text.assemble(("  " + f"{k:<{LABEL_W}} ", "accent"), v) for k, v in facts] + [Text()]
     right += [Text("  " + h, style="muted") for h in hints]
     for i in range(max(len(left), len(right))):

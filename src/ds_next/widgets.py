@@ -1,7 +1,7 @@
-"""Two inline widgets in the Claude Code style: a picker and a one-screen form.
+"""Two inline widgets drawn with the ui_style roles: a picker and a one-screen form.
 
 Both draw below the prompt (not full screen), erase themselves when done, and return a value,
-or None when the user presses Esc or Ctrl-C.
+or None when the user presses Esc or Ctrl-C. A frame means "needs you".
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
@@ -20,6 +21,11 @@ from . import ui_style as S
 from .ui_style import G, LABEL_W
 
 STYLE = Style.from_dict(S.pt_style())
+
+
+def _keys(*parts: tuple[str, str]) -> list[tuple[str, str]]:
+    """Key line: dim text with the one submit key as a band."""
+    return [("class:dim", "  ")] + [(f"class:{cls}", txt) for cls, txt in parts]
 
 
 async def pick(title: str, options: list[tuple[str, str, str]]) -> str | None:
@@ -54,16 +60,17 @@ async def pick(title: str, options: list[tuple[str, str, str]]) -> str | None:
             e.app.exit(result=options[n - 1][0])
 
     def text():
-        out = [("class:title", f" {title}\n\n")]
+        out = []
         for i, (_, label, desc) in enumerate(options):
             on = i == state["i"]
-            out += [("class:accent" if on else "", f" {G.select if on else ' '} {i + 1}. {label}"),
-                    ("class:dim", f"  {desc}\n")]
-        out += [("class:dim", "\n ↑↓ move · "), ("class:key", " Enter choose "), ("class:dim", " · Esc cancel")]
+            out += [("class:focus" if on else "class:field", f" {G.select if on else ' '} {i + 1}. {label}"),
+                    ("class:muted", f"  {desc}\n")]
+        out.append(("", "\n"))
+        out += _keys(("dim", "↑↓ move · "), ("key", " Enter choose "), ("dim", " · Esc cancel"))
         return FormattedText(out)
 
-    app = Application(layout=Layout(Window(FormattedTextControl(text), dont_extend_height=True)),
-                      key_bindings=kb, style=STYLE, full_screen=False, erase_when_done=True)
+    body = Frame(Window(FormattedTextControl(text), dont_extend_height=True), title=title, style="class:frame.border")
+    app = Application(layout=Layout(body), key_bindings=kb, style=STYLE, full_screen=False, erase_when_done=True)
     return await app.run_async()
 
 
@@ -74,17 +81,17 @@ class Field:
     value: str = ""
     hint: str = ""
     required: bool = False
-    choices: list[tuple[str, str]] | None = None   # (value, label): a field you cycle with ←/→ or space
-    example: str = ""                               # shown as "e.g. …" while the field is empty
-    normalize: Callable[[str], str] | None = None   # rewrites the text as it is typed (lowercase, spaces to dashes)
-    check: Callable[[str], str | None] | None = None  # a message shown in red while the text breaks a rule
+    choices: list[tuple[str, str]] | None = None
+    example: str = ""
+    normalize: Callable[[str], str] | None = None
+    check: Callable[[str], str | None] | None = None
 
 
 async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]], str],
-               validate: Callable[[dict[str, str]], tuple[str, str] | None]) -> dict[str, str] | None:
-    """Every field on one screen, already filled with a suggestion. Tab/↓ and Shift-Tab/↑ move,
-    Enter submits from any field. `validate` returns (field key, message) to refuse a submit;
-    `footer` is recomputed on every keystroke."""
+               validate: Callable[[dict[str, str]], tuple[str, str] | None],
+               width: int = S.DESIGN_WIDTH) -> dict[str, str] | None:
+    """Every field on one screen, already filled with a suggestion, inside a square frame.
+    Tab/↓ and Shift-Tab/↑ move, Enter submits from any field. Labels sit on the LABEL_W grid."""
     chosen = {f.key: max(0, next((i for i, (v, _) in enumerate(f.choices) if v == f.value), 0))
               for f in fields if f.choices}
 
@@ -92,16 +99,14 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
         def get():
             on = get_app().layout.has_focus(areas[f.key])
             i = chosen[f.key]
-            return FormattedText([("class:accent" if on else "class:field",
-                                   f"‹ {f.choices[i][1]} ›"),
-                                  ("class:dim", f"   {i + 1}/{len(f.choices)}" if on else "")])
+            return FormattedText([("class:strong" if on else "class:field", f"‹ {f.choices[i][1]} ›"),
+                                  ("class:dim", f"  {i + 1}/{len(f.choices)}" if on else "")])
         return get
 
     areas = {}
     for f in fields:
         if f.choices:
-            areas[f.key] = Window(FormattedTextControl(choice_text(f), focusable=True), height=1,
-                                  dont_extend_height=True)
+            areas[f.key] = Window(FormattedTextControl(choice_text(f), focusable=True), height=1, dont_extend_height=True)
         else:
             areas[f.key] = TextArea(text=f.value, multiline=False, wrap_lines=False, style="class:field")
     order = [areas[f.key] for f in fields]
@@ -144,16 +149,17 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
             if focused.hint:
                 bits.append(focused.hint)
             line = " · ".join(bits)
-        parts = [("class:dim", f"   {line}\n" if line else "\n")]
-        parts.append(("class:accent", f"   {footer(v)}\n"))
+        parts = [("class:dim", f"  {line}\n" if line else "\n")]
+        parts.append(("class:accent", f"  {footer(v)}\n"))
         live = focused.check(v[focused.key]) if focused and focused.check and v[focused.key] else None
         if live:
-            parts.append(("class:error", f"   {live}\n"))
+            parts.append(("class:error", f"  {G.err} {live}\n"))
         elif error["msg"]:
-            parts.append(("class:error", f"   {error['msg']}\n"))
+            parts.append(("class:error", f"  {G.err} {error['msg']}\n"))
+        else:
+            parts.append(("", "\n"))
         keys = "←/→ change · " if focused_choice() else ""
-        parts += [("class:dim", f"   {keys}Tab next · ↑ back · "), ("class:key", " Enter submit "),
-                  ("class:dim", " · Esc cancel")]
+        parts += _keys(("dim", f"{keys}Tab next · ↑ back · "), ("key", " Enter submit "), ("dim", " · Esc cancel"))
         return FormattedText(parts)
 
     kb = KeyBindings()
@@ -192,7 +198,7 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
             e.app.current_buffer.insert_text(" ")
 
     @kb.add("left")
-    def _cycle_prev(e):
+    def _left(e):
         if focused_choice() is not None:
             cycle(-1)
         else:
@@ -217,8 +223,7 @@ async def form(title: str, fields: list[Field], footer: Callable[[dict[str, str]
 
     rows = [VSplit([label(f), areas[f.key]]) for f in fields]
     rows.append(Window(FormattedTextControl(hint), dont_extend_height=True))
-    body = Frame(HSplit(rows), title=title, style="class:frame.border")   # a frame means "needs you"
-    first = order[0]      # top to bottom, as the eye reads it
-    app = Application(layout=Layout(body, focused_element=first), key_bindings=kb, style=STYLE,
+    body = Frame(HSplit(rows, width=Dimension(max=width - 2)), title=title, style="class:frame.border")
+    app = Application(layout=Layout(body, focused_element=order[0]), key_bindings=kb, style=STYLE,
                       full_screen=False, erase_when_done=True)
     return await app.run_async()
