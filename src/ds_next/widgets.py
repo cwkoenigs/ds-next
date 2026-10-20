@@ -9,10 +9,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from prompt_toolkit.application import Application, get_app
+from prompt_toolkit.filters import Condition, has_completions, is_done
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.filters import Condition, has_completions, is_done
-from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, ScrollOffsets, VSplit, Window
+from prompt_toolkit.layout import (
+    ConditionalContainer,
+    HSplit,
+    Layout,
+    ScrollOffsets,
+    VSplit,
+    Window,
+)
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenuControl
@@ -20,7 +27,7 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
 from . import ui_style as S
-from .ui_style import G, LABEL_W
+from .ui_style import LABEL_W, G
 
 STYLE = Style.from_dict(S.pt_style())
 

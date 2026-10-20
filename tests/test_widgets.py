@@ -20,8 +20,9 @@ def drive(coro_fn, keys: str):
     return asyncio.run(go())
 
 
-FIELDS = lambda: [Field("name", "name", "", required=True), Field("purpose", "purpose", "", required=True),
-                  Field("owner", "owner", "ck")]
+def FIELDS():
+    return [Field("name", "name", "", required=True), Field("purpose", "purpose", "", required=True),
+            Field("owner", "owner", "ck")]
 
 
 def make_form(seen):
@@ -97,6 +98,7 @@ def test_normalize_name_examples():
 def test_prompt_line_accepts_completes_and_recalls_history():
     import pytest
     from prompt_toolkit.history import InMemoryHistory
+
     from ds_next.ui import SlashCompleter
     comp = SlashCompleter({"/help": "this list", "/new": "start"}, {}, {})
     hist = InMemoryHistory()
@@ -126,6 +128,7 @@ def test_resize_clears_screen_and_scrollback_then_repaints():
     redraw that cannot stack is one from a clean screen with the transcript printed again."""
     from prompt_toolkit.application import Application
     from prompt_toolkit.layout import Layout, Window
+
     from ds_next import widgets
 
     writes: list[str] = []
