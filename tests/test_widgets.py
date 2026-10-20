@@ -8,16 +8,30 @@ from prompt_toolkit.output import DummyOutput
 from ds_next.widgets import Field, form, pick, prompt_frame, prompt_line
 
 
+class _Interrupted(Exception):
+    """ctrl-c inside the task, carried out as a plain exception: asyncio re-raises a
+    KeyboardInterrupt straight out of the loop and leaves the task's exception unretrieved."""
+
+
 def drive(coro_fn, keys: str):
     async def go():
         with create_pipe_input() as inp, create_app_session(input=inp, output=DummyOutput()):
-            task = asyncio.ensure_future(coro_fn())
+            async def run():
+                try:
+                    return await coro_fn()
+                except KeyboardInterrupt as e:
+                    raise _Interrupted from e
+
+            task = asyncio.ensure_future(run())
             await asyncio.sleep(0.1)
             for ch in keys:                       # one key at a time, as a person types
                 inp.send_text(ch)
                 await asyncio.sleep(0.01)
             return await asyncio.wait_for(task, 3)
-    return asyncio.run(go())
+    try:
+        return asyncio.run(go())
+    except _Interrupted as e:
+        raise KeyboardInterrupt from e
 
 
 def FIELDS():
