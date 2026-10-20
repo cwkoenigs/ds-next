@@ -51,7 +51,7 @@ from .widgets import Field, form, pick
 # The look is updater's (Hermes style, plain terminal colours so it follows the user's theme):
 # a magenta box for the banner, cyan ◆ for what the agent says and → for what it runs, dim │ for
 # output, green ✓, yellow ⚠, red ✗.
-BRAND = "bold magenta"
+BRAND = "magenta"            # not bold: bold box-drawing lines render as broken dashes in VS Code's terminal
 ACCENT = "cyan"
 HEAD = "bold cyan"
 OK = "green"
