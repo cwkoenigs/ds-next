@@ -178,7 +178,7 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
         title, detail = describe_permission(tool_name, inp)
         if yes_all or (yes and title in ("scaffold_project", "block_add", "code_add", "capture")):
             if yes_all:
-                out.print(f"  │ approved by --yes-all: {title} {detail.splitlines()[0][:100] if detail else ''}",
+                out.print(f"  ⎿  approved by --yes-all: {title} {detail.splitlines()[0][:100] if detail else ''}",
                           style="yellow")
             return PermissionResultAllow()
         return PermissionResultDeny(message=f"{title} is not allowed in a one-shot run; rerun with --yes "
@@ -191,7 +191,7 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
             async for msg in agent.turn(prompt):
                 render(out, msg, state)
         except TurnStalled as e:
-            out.print(f"  │ {e}", style="yellow")
+            out.print(f"  ⎿  {e}", style="yellow")
             raise typer.Exit(3) from None
         finally:
             await agent.close()
