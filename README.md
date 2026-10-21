@@ -1,8 +1,9 @@
 # ds-next
 
 <!-- ds:local interview 2026-10-16 -->
-`ds`, rebuilt small. A terminal that looks and behaves like Claude Code, drives Cortex Code
-through Snowflake's Python SDK (`snowflake-cortex-agent-sdk`, its `cortexcode` module), and scaffolds projects from the team's
+`ds`, rebuilt small. A terminal that looks and behaves like Claude Code, drives Claude Code or
+Cortex Code through their agent SDKs (Cortex's `snowflake-cortex-agent-sdk` is a fork of Claude's
+`claude-agent-sdk`; `sdk.py` picks one per machine), and scaffolds projects from the team's
 knowledge base. About 1,350 lines of Python in seven modules.
 
 Owner: ckoenigs
@@ -34,7 +35,7 @@ flows back to where it is written.
 | canon | the only place a standard's text exists; ds-next reads `index.json` and the files | `$DS_CANON`, else `~/Developer/canon` |
 | skills-os | procedures the agent follows (`skill_read`), offered as `/so-*` slash commands, and named in every new repo's AGENTS.md | `$DS_SKILLS`, else `~/Developer/skills-os` |
 | docs-ds | the Docusaurus shell `/docs` builds with; never modified | `$DS_DOCS_SHELL`, else `~/Developer/docs-ds` |
-| Cortex Code | the model and its tools, driven through the SDK with the knowledge base as in-process MCP tools | `cortex` on `PATH` |
+| Claude Code or Cortex Code | the model and its tools, driven through its SDK with the knowledge base as in-process MCP tools | `claude` or `cortex` on `PATH`; `ds-next setup --agent claude` (or `cortex`) decides which the terminal uses, `DS_AGENT` overrides for one run |
 
 ## Run
 
@@ -90,7 +91,7 @@ form approves exactly what you submitted; if the model changes a value, you appr
 | `/captures` | drafts waiting to become canon merge requests | no |
 | `/effort [level]` | thinking effort, `low` by default for speed; resumes the same session | no |
 | `/model`, `/clear`, `/help`, `/exit` | session control | no |
-| anything else | a turn with Cortex Code | yes |
+| anything else | a turn with the agent (Claude Code or Cortex Code) | yes |
 
 While the model works, the status line shows the step and the seconds elapsed. Ctrl-C
 interrupts a turn and keeps the session. Enter on an empty line answers the model's last

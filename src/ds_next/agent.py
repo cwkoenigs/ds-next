@@ -1,4 +1,4 @@
-"""Cortex Code, driven through snowflake-cortex-agent-sdk (its cortexcode module), with the knowledge base as tools.
+"""The agent (Claude Code or Cortex Code, see sdk.py), driven through its SDK with the knowledge base as tools.
 
 The tools run in this process (an SDK MCP server named "ds"), so the agent reads the same
 canon and skills the deterministic commands read, and the only thing that writes a project is
@@ -14,19 +14,10 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from cortex_agent_sdk.cortexcode import (
-    CortexCodeAgentOptions,
-    CortexCodeSDKClient,
-    Message,
-    PermissionResultAllow,
-    PermissionResultDeny,
-    create_sdk_mcp_server,
-    tool,
-)
-
 from . import code as code_mod
-from . import codetools, reconcile, scaffold
+from . import codetools, reconcile, scaffold, sdk
 from .kb import Canon, Skills
+from .sdk import Message, PermissionResultAllow, PermissionResultDeny, create_sdk_mcp_server, tool
 
 SERVER = "ds"
 READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status",
@@ -89,7 +80,7 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
     async def canon_list(args):
         tags = [t.strip() for t in str(_arg(args, "tags")).split(",") if t.strip()]
         stds = canon.applicable(tags) if tags else sorted(canon.standards.values(), key=lambda s: s.id)
-        return _text("\n".join(f"{s.id} v{s.version}{' (gotcha)' if s.kind == 'gotcha' else ''} "
+        return _text("\n".join(f"{s.id} v{s.version} {s.status or 'proposed'}{' (gotcha)' if s.kind == 'gotcha' else ''} "
                                f"[{', '.join(s.applies_to)}] {s.title}" for s in stds))
 
     @tool("canon_read", "Read one standard or gotcha in full, by id (as canon_list prints it).",
@@ -436,34 +427,21 @@ class Agent:
         self.idle_timeout: float | None = 600      # long tool runs are silent too; approvals pause it
         self._asking = False
         self._last = 0.0
-        self._client: CortexCodeSDKClient | None = None
+        self._client: sdk.SDKClient | None = None
 
-    def options(self) -> CortexCodeAgentOptions:
+    def options(self):
         server = create_sdk_mcp_server(SERVER, tools=tools(self.canon, self.skills, self.cwd, self.connection))
         code = codetools.mcp_servers(self.cwd)
         self._read_only = READ_ONLY_IDS | codetools.read_only_ids(code)
-        return CortexCodeAgentOptions(
-            cwd=str(self.cwd),
-            mcp_servers={SERVER: server, **code},
-            # No allowed_tools: Cortex treats that list as exclusive (everything else is blocked
-            # before can_use_tool is asked). Read-only ds tools are approved in _permit instead.
-            append_system_prompt=system_prompt(self.cwd, self.canon, self.skills),
-            can_use_tool=self._permit,
-            model=self.model,
-            connection=self.connection,
-            effort=self.effort,
-            resume=self._resume,
-            # The terminal brings its own servers in-process. Skip the user's mcp.json: once `ds`
-            # is registered there for plain Cortex sessions, loading it here too makes every
-            # tool name a duplicate and the API rejects the request.
-            extra_args={"only-explicit-mcp-servers": None},
-        )
+        return sdk.options(cwd=str(self.cwd), mcp_servers={SERVER: server, **code},
+                           append_system_prompt=system_prompt(self.cwd, self.canon, self.skills),
+                           can_use_tool=self._permit, model=self.model, connection=self.connection,
+                           effort=self.effort, resume=self._resume)
 
     async def _permit(self, tool_name: str, inp: dict[str, Any], ctx: Any):
-        """Cortex asks with a kind ("MCP", "Bash", ...) and a resource string whose first line
-        names the MCP tool. Reading the knowledge base never needs a human."""
-        resource = str(inp.get("resource", "")) if isinstance(inp, dict) else ""
-        if tool_name == "MCP" and resource.split("\n", 1)[0].strip() in getattr(self, "_read_only", READ_ONLY_IDS):
+        """Reading the knowledge base never needs a human; everything else asks. Cortex names the
+        tool inside a resource string, Claude Code by its id (sdk.tool_id reads both)."""
+        if sdk.tool_id(tool_name, inp) in getattr(self, "_read_only", READ_ONLY_IDS):
             return PermissionResultAllow()
         if self.ask_permission is None:
             return PermissionResultDeny(message="No one is here to approve this call.")
@@ -478,9 +456,9 @@ class Agent:
         return self._client is not None
 
     async def connect(self) -> None:
-        """Start Cortex and, at the same time, refresh the code graph, so the first query is current."""
+        """Start the agent and, at the same time, refresh the code graph, so the first query is current."""
         if self._client is None:
-            client = CortexCodeSDKClient(self.options())
+            client = sdk.SDKClient(self.options())
             # The SDK's connection lives in an anyio task group that must be entered and exited in
             # the same task, so connect() runs here, never inside gather() or a new task: only the
             # indexing runs alongside, in a thread. [[gotcha-cortex-sdk]]

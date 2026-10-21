@@ -7,6 +7,8 @@ dependencies = [
     # Snowflake's Cortex Agent SDK (Public Preview, 2026-10-13); its cortexcode module drives the
     # local Cortex Code CLI and supersedes cortex-code-agent-sdk. It caps mcp below 2 itself.
     "snowflake-cortex-agent-sdk==0.0.2",
+    # Claude Code's SDK, the one Cortex's is a fork of; sdk.py picks whichever agent this machine uses.
+    "claude-agent-sdk>=0.2",
     "rich>=13",
     "prompt-toolkit>=3.0.40",
     "typer>=0.12",

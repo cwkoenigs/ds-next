@@ -20,19 +20,6 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from cortex_agent_sdk.cortexcode import (
-    AssistantMessage,
-    CortexCodeSDKError,
-    PermissionResultAllow,
-    PermissionResultDeny,
-    ResultMessage,
-    SystemMessage,
-    TextBlock,
-    ThinkingBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-    UserMessage,
-)
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application import get_app
 from prompt_toolkit.completion import Completer, Completion
@@ -42,10 +29,23 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
 
-from . import __version__, docs, reconcile, scaffold, widgets
+from . import __version__, docs, reconcile, scaffold, sdk, widgets
 from . import ui_style as S
 from .agent import SERVER, Agent, TurnStalled
 from .kb import Canon, Scaffold, Skills, docs_shell_path
+from .sdk import (
+    AssistantMessage,
+    PermissionResultAllow,
+    PermissionResultDeny,
+    ResultMessage,
+    SDKError,
+    SystemMessage,
+    TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+)
 from .ui_style import G
 from .widgets import Field, form, prompt_line, resize_safe
 
@@ -239,13 +239,18 @@ class Approver:
 
 
 def describe_permission(tool_name: str, inp: dict[str, Any]) -> tuple[str, str]:
-    """Cortex sends a kind ("MCP", "Bash", "Write"...) and a resource string. Returns
-    (title, detail), naming ds tools by their short name."""
+    """(title, detail) for an approval, naming ds tools by their short name. Cortex sends a kind
+    ("MCP", "Bash", "Write"...) and a resource string; Claude Code sends the tool's id and its
+    input."""
     resource = str(inp.get("resource", "")) if isinstance(inp, dict) else ""
     if tool_name == "MCP":
         first, _, rest = resource.partition("\n")
         detail = rest.removeprefix("Input:").strip()
         return _short(first.strip()), detail
+    if tool_name.startswith("mcp__"):
+        return _short(tool_name), json.dumps(inp, indent=1) if inp else ""
+    if isinstance(inp, dict) and isinstance(inp.get("command"), str):     # Claude Code's Bash
+        return tool_name, inp["command"]
     return tool_name, resource or json.dumps(inp, indent=1)
 
 
@@ -663,8 +668,8 @@ class Repl:
                     self._status.update(label())
         except TurnStalled as e:
             self.console.print(S.result(str(e), error=True))
-        except CortexCodeSDKError as e:
-            for line in S.error(f"Cortex Code refused: {e}", "the draft is kept · retry, or /clear"):
+        except SDKError as e:
+            for line in S.error(f"{sdk.LABEL} refused: {e}", "the draft is kept · retry, or /clear"):
                 self.console.print(line)
             await self.agent.reset()
         finally:

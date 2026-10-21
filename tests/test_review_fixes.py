@@ -1,6 +1,5 @@
 """One regression test per finding from the Codex review of 2026-10-16, named after it."""
 import asyncio
-import types
 import json
 import os
 import re
@@ -8,16 +7,17 @@ import signal
 import subprocess
 import sys
 import tomllib
+import types
 from pathlib import Path
 
 import pytest
 import yaml
 from conftest import make_canon
-from cortex_agent_sdk.cortexcode import create_sdk_mcp_server
 from mcp.types import CallToolRequest, CallToolRequestParams
 
 from ds_next import agent, reconcile, scaffold
 from ds_next.kb import Canon, CanonError, Skills, canon_path
+from ds_next.sdk import create_sdk_mcp_server
 from ds_next.ui import Approver
 
 HOSTILE = 'Print "hello" \\ 🚀 """ end'
@@ -142,6 +142,7 @@ def test_hook_says_so_when_ds_next_is_missing(tmp_path, monkeypatch):
 def test_reconcile_stands_aside_outside_a_ds_repo(tmp_path):
     """A checkout without .ds/manifest.toml (a branch from before adopt) must not block a push."""
     from typer.testing import CliRunner
+
     from ds_next import cli
     for args in (["reconcile", str(tmp_path)], ["reconcile", "--quiet", str(tmp_path)]):
         r = CliRunner().invoke(cli.app, args)

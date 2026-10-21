@@ -81,7 +81,7 @@ def test_connect_and_close_happen_in_the_callers_task(monkeypatch, tmp_path, can
         async def disconnect(self):
             seen.append(("disconnect", asyncio.current_task()))
 
-    monkeypatch.setattr(agent, "CortexCodeSDKClient", FakeClient)
+    monkeypatch.setattr(agent.sdk, "SDKClient", FakeClient)
     monkeypatch.setattr(codetools.shutil, "which", fake_which({"codebase-memory-mcp"}))
     monkeypatch.setattr(codetools, "index", lambda repo: "graph: indexed")
     (tmp_path / ".git").mkdir()
@@ -120,7 +120,7 @@ class QuietClient:
 def test_a_silent_stream_stalls_but_an_approval_does_not(monkeypatch, tmp_path, canon, skills):
     monkeypatch.setattr(codetools.shutil, "which", fake_which(set()))
     made = []
-    monkeypatch.setattr(agent, "CortexCodeSDKClient", lambda o: made.append(QuietClient(o)) or made[-1])
+    monkeypatch.setattr(agent.sdk, "SDKClient", lambda o: made.append(QuietClient(o)) or made[-1])
     a = agent.Agent(tmp_path, canon=canon, skills=skills)
     a.idle_timeout = 0.2
 
@@ -145,7 +145,7 @@ def test_a_silent_stream_stalls_but_an_approval_does_not(monkeypatch, tmp_path, 
             await b._permit("Bash", {"resource": "ls"}, None)
             yield type("M", (), {"session_id": "s1"})()
 
-    monkeypatch.setattr(agent, "CortexCodeSDKClient", lambda o: Asks(o))
+    monkeypatch.setattr(agent.sdk, "SDKClient", lambda o: Asks(o))
 
     async def drain_b():
         return [m async for m in b.turn("hi")]

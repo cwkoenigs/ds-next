@@ -6,7 +6,10 @@ import sys
 from pathlib import Path
 
 import pytest
-from cortex_agent_sdk.cortexcode import (
+from rich.console import Console
+
+from ds_next import agent, reconcile
+from ds_next.sdk import (  # whichever SDK this machine runs: the terminal renders its types
     AssistantMessage,
     ResultMessage,
     TextBlock,
@@ -14,9 +17,6 @@ from cortex_agent_sdk.cortexcode import (
     ToolUseBlock,
     UserMessage,
 )
-from rich.console import Console
-
-from ds_next import agent, reconcile
 from ds_next.ui import describe_permission, render
 
 
@@ -29,7 +29,7 @@ def call(tools, name, args):
 def test_read_tools(tmp_path, canon, skills):
     tools = agent.tools(canon, skills, tmp_path)
     text, _ = call(tools, "canon_list", {"tags": "python,cli"})
-    assert text.splitlines()[0].startswith("adr-000 v1")
+    assert text.splitlines()[0].split()[:3] == ["adr-000", "v1", "accepted"]   # the status shows
     assert "error-handling" not in text
     assert call(tools, "canon_read", {"id": "testing"})[0].startswith("# Testing")
     assert call(tools, "canon_read", {"id": "nope"})[1] is True
@@ -157,3 +157,17 @@ def test_tool_names_from_other_servers():
     from ds_next.ui import _short
     assert (_short("mcp__ds__canon_read"), _short("mcp__graph__trace_path"), _short("bash")) == (
         "canon_read", "graph.trace_path", "Bash")
+
+
+def test_permissions_in_claude_code_shape(tmp_path, canon, skills):
+    """Claude Code asks with the tool id and its input; Cortex with a kind and a resource."""
+    from ds_next.agent import Agent
+    assert describe_permission("mcp__ds__scaffold_project", {"name": "x"}) == ("scaffold_project", '{\n "name": "x"\n}')
+    assert describe_permission("Bash", {"command": "echo hi"}) == ("Bash", "echo hi")
+
+    async def ui(tool_name, inp, ctx):
+        return "ui-decision"
+    a = Agent(tmp_path, ask_permission=ui, canon=canon, skills=skills)
+    assert asyncio.run(a._permit("mcp__ds__canon_read", {"id": "testing"}, None)).__class__.__name__ == "PermissionResultAllow"
+    assert asyncio.run(a._permit("mcp__ds__scaffold_project", {"name": "x"}, None)) == "ui-decision"
+    assert asyncio.run(a._permit("Bash", {"command": "rm -rf /"}, None)) == "ui-decision"

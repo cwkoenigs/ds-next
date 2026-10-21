@@ -197,13 +197,18 @@ def docs(output: Path = typer.Option(None, "--out", help="build directory (defau
 
 
 @app.command()
-def setup(check: bool = typer.Option(False, "--check", help="report what would change; write nothing")):
-    """Connect this machine's Cortex Code to the knowledge system. Safe to rerun."""
+def setup(check: bool = typer.Option(False, "--check", help="report what would change; write nothing"),
+          agent: str = typer.Option("auto", "--agent", help="claude, cortex, or auto (every one on PATH); a "
+                                    "choice is remembered in ~/.ds/config.toml as the terminal's agent")):
+    """Connect this machine's agents (Claude Code, Cortex Code) to the knowledge system. Safe to rerun."""
     from . import setup as setup_mod
 
-    ok = setup_mod.setup_cortex(check, lambda line: out.print(Text("  " + line)))
+    if agent not in ("auto", "claude", "cortex"):
+        _err(f"{agent} is not an agent", "claude, cortex or auto")
+        raise typer.Exit(2)
+    ok = setup_mod.setup(agent, check, lambda line: out.print(Text("  " + line)))
     if not check:
-        out.print(S.hint("restart Cortex Code to pick this up"))
+        out.print(S.hint("restart the agent to pick this up"))
     raise typer.Exit(0 if ok else 1)
 
 
@@ -213,10 +218,9 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
         yes_all: bool = typer.Option(False, "--yes-all", help="allow every tool, Bash and file edits included"),
         effort: str = typer.Option("low", "--effort", help="thinking effort: minimal, low, medium, high, max"),
         model: str | None = typer.Option(None, "--model", "-m")):
-    """One turn through Cortex Code, printed the way the terminal prints it."""
-    from cortex_agent_sdk.cortexcode import PermissionResultAllow, PermissionResultDeny
-
+    """One turn through the agent (Claude Code or Cortex Code), printed the way the terminal prints it."""
     from .agent import Agent, TurnStalled
+    from .sdk import PermissionResultAllow, PermissionResultDeny
     from .ui import describe_permission, render
 
     if prompt.startswith("@"):
@@ -248,7 +252,7 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
 
 @app.command()
 def mcp() -> None:
-    """Serve the knowledge-base tools over stdio MCP, for any MCP client (the same tools Cortex gets)."""
+    """Serve the knowledge-base tools over stdio MCP, for any MCP client (the same tools the agents get)."""
     from mcp.server.stdio import stdio_server
 
     from .agent import SERVER, create_sdk_mcp_server, tools
