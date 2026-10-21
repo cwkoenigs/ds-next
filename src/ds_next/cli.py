@@ -106,8 +106,11 @@ def reconcile(path: Path = typer.Argument(Path("."), help="repo, or a directory 
     """Offline check against the canon. Exit 1 only on a broken pointer or a bad manifest."""
     repo = reconcile_mod.find_repo(path.resolve())
     if repo is None:
-        _err(f"{path.resolve()} is not a ds repo")
-        raise typer.Exit(1)
+        # Not an error: a branch that predates adopt, or a repo that never joined. The pre-push
+        # hook runs this on whatever is checked out, so it must stand aside here, as it does
+        # when ds-next itself is missing.
+        out.print(S.hint(f"ds: {path.resolve()} is not a ds repo (no .ds/manifest.toml), so reconcile did not run"))
+        raise typer.Exit(0)
     rep = reconcile_mod.check(repo)
     if quiet:
         if rep.pending:
