@@ -139,6 +139,16 @@ def test_hook_says_so_when_ds_next_is_missing(tmp_path, monkeypatch):
     assert r.returncode == 0 and "reconcile did not run" in r.stderr
 
 
+def test_reconcile_stands_aside_outside_a_ds_repo(tmp_path):
+    """A checkout without .ds/manifest.toml (a branch from before adopt) must not block a push."""
+    from typer.testing import CliRunner
+    from ds_next import cli
+    for args in (["reconcile", str(tmp_path)], ["reconcile", "--quiet", str(tmp_path)]):
+        r = CliRunner().invoke(cli.app, args)
+        assert r.exit_code == 0, r.output
+        assert "not a ds repo" in r.output and "did not run" in r.output
+
+
 # -- reconcile answers instead of crashing
 
 @pytest.mark.parametrize("manifest, expected", [
