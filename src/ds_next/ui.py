@@ -42,18 +42,18 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
 
-from . import __version__, docs, reconcile, scaffold
+from . import __version__, docs, reconcile, scaffold, widgets
 from . import ui_style as S
-from .ui_style import G, LABEL_W
 from .agent import SERVER, Agent, TurnStalled
 from .kb import Canon, Scaffold, Skills, docs_shell_path
-from . import widgets
+from .ui_style import G
 from .widgets import Field, form, prompt_line, resize_safe
 
 # Everything printed goes through ui_style: the roles, glyphs and grid of the terminal design
 # system ([[terminal-design]]). One rail per turn; a frame means "needs you"; nothing reflows.
 COMMANDS = {
     "/new": "start a project from a canon scaffold: /new, /new python, /new python cli <name>",
+    "/adopt": "bring this existing repo into the system: manifest, AGENTS.md, the hook; nothing else changes",
     "/canon": "list standards, or /canon <id> to read one",
     "/skills": "list skills-os procedures, or /skills <name> to read one",
     "/status": "reconcile this repo against the canon",
@@ -549,6 +549,57 @@ class Repl:
         await self.turn("New project draft from the /new form. Review it against the canon, then fetch the "
                         f"accepted scaffold and create it, as your instructions say.\n\n{json.dumps(draft, indent=1)}")
 
+    async def cmd_adopt(self, arg: str) -> None:
+        """An existing repo joins: what the files say, corrected in a form, then written."""
+        repo = reconcile.find_repo(self.cwd)
+        if repo:
+            for line in S.error(f"{repo.name} is already in the system", "/status shows where it stands"):
+                self.console.print(line)
+            return
+        if not (self.cwd / ".git").is_dir():
+            for line in S.error(f"{self.cwd.name} is not a git repository", "git init first; the pre-push hook needs it"):
+                self.console.print(line)
+            return
+        d = scaffold.detect(self.cwd)
+        fields = [
+            Field("purpose", "purpose", d.purpose, "one line: what it does and for whom", True,
+                  example="Daily barn reporting for the caretakers"),
+            Field("tags", "tags", ", ".join(d.tags), "comma-separated; they decide which standards apply"),
+            Field("owner", "owner", d.owner, "who answers for this repo; the git user by default", True),
+            Field("test", "test", d.test_cmd, "how the tests run here"),
+            Field("lint", "lint", d.lint_cmd, "how the lint runs here"),
+        ]
+
+        def tags_of(v: dict[str, str]) -> list[str]:
+            return [t.strip() for t in v["tags"].split(",") if t.strip()]
+
+        def footer(v: dict[str, str]) -> str:
+            return f"{len(self.canon.applicable(tags_of(v)))} standards apply · pending until you adopt them in /status"
+
+        def validate(v: dict[str, str]):
+            if not v["purpose"].strip():
+                return ("purpose", "one line on what the repo does")
+            if not v["owner"].strip():
+                return ("owner", "who answers for this repo")
+            return None
+
+        v = await form(f"{d.name} joins the system", fields, footer, validate, width=S.width(self.console))
+        if v is None:
+            self.console.print(S.hint("cancelled"))
+            return
+        a = scaffold.Adoption(name=d.name, purpose=v["purpose"], owner=v["owner"], tags=tags_of(v),
+                              test_cmd=v["test"], lint_cmd=v["lint"])
+        try:
+            written = scaffold.adopt(self.cwd, a, self.canon, self.skills)
+        except (ValueError, FileExistsError, scaffold.ScaffoldError) as e:
+            for line in S.error("not adopted", str(e)):
+                self.console.print(line)
+            return
+        self.console.print(S.outcome("ok", d.name, f"joined the system · {', '.join(a.tags) or 'no tags'}"))
+        self.console.print(S.labelled("wrote", ", ".join(written)))
+        self._refresh_where()
+        self.cmd_status("")
+
     async def cmd_effort(self, arg: str) -> None:
         if arg:
             if arg not in ("minimal", "low", "medium", "high", "xhigh", "max"):
@@ -648,7 +699,7 @@ class Repl:
         if cmd[1:] in self.skills.all:
             await self.turn(f"Follow the {cmd[1:]} skill: skill_read it first, then do what it says."
                             + (f" Context from me: {arg}" if arg else ""))
-        elif cmd in ("/model", "/clear", "/new", "/effort"):
+        elif cmd in ("/model", "/clear", "/new", "/adopt", "/effort"):
             await getattr(self, f"cmd_{cmd[1:]}")(arg)
         elif cmd in COMMANDS:
             getattr(self, f"cmd_{cmd[1:]}")(arg)

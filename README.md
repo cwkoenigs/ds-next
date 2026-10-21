@@ -125,6 +125,7 @@ The same code, for scripts, hooks and CI:
 ```bash
 ds-next new NAME --answers answers.toml [--dir PARENT]   # tests/fixtures/answers.toml is an example
 ds-next reconcile [PATH] [--quiet]                       # exit 1 only on a broken pointer or bad manifest
+ds-next adopt [PATH] [--purpose ..] [--tags a,b] [--adopt-all]   # an existing repo joins: manifest, AGENTS.md, hook
 ds-next canon list [--tags python,cli] | canon read ID
 ds-next skills
 ds-next docs [--out DIR]

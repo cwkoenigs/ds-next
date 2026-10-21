@@ -1,7 +1,7 @@
 """`ds-next setup`: connect this machine's agents to the knowledge system, idempotently.
 
 Cortex Code today: register the `ds` MCP server, add the /ds-new skill, and allow the read-only
-ds tools so reading the canon never prompts. The four write tools keep prompting: that approval
+ds tools so reading the canon never prompts. The five write tools keep prompting: that approval
 is the control point. Every step reports what it found and what it changed; --check changes
 nothing.
 """
@@ -114,5 +114,5 @@ def setup_cortex(check: bool, say) -> bool:
             shutil.copy2(settings_path, settings_path.with_suffix(".json.bak"))
         settings_path.write_text(json.dumps(new, indent=2) + "\n")
         say(f"permissions: allowed {len(added)} read-only ds tools in {settings_path} (backup .json.bak)")
-    say("write tools (scaffold_project, block_add, code_add, capture) still ask: that is the control point")
+    say("write tools (scaffold_project, adopt_repo, block_add, code_add, capture) still ask: that is the control point")
     return ok

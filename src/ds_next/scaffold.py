@@ -421,3 +421,190 @@ def add_block(repo: Path, bid: str, canon: Canon | None = None, by: str | None =
     manifest_path.write_text(manifest_text)
     return {"block": bid, "version": b.version, "files": sorted(files), "requires": added, "manual": manual,
             "note": "updated" if have is not None else "added"}
+
+
+# ── an existing repository joins the system ──────────────────────────────────
+ADOPT_MARKER = "<!-- ds:inherited canon"
+
+
+@dataclass
+class Adoption:
+    """What an existing repository says about itself. `detect` fills it from the files; the
+    owner corrects it; `adopt` writes the manifest from it."""
+    name: str
+    purpose: str = ""
+    owner: str = field(default_factory=_git_user)
+    tags: list[str] = field(default_factory=list)
+    test_cmd: str = ""
+    lint_cmd: str = ""
+
+    def validate(self) -> None:
+        if (why := name_problem(self.name)):
+            raise ValueError(f"name {self.name!r}: {why}")
+        if not self.purpose.strip():
+            raise ValueError("purpose: one line on what the repo does (the README had no first sentence)")
+        if not self.owner.strip():
+            raise ValueError("owner: who answers for this repo")
+        self.tags = sorted({t.strip() for t in self.tags if t.strip()})
+
+
+def _readme_purpose(repo: Path) -> str:
+    """The first sentence of the README's first paragraph that is prose, or empty."""
+    for name in ("README.md", "readme.md", "README"):
+        p = repo / name
+        if not p.is_file():
+            continue
+        for para in re.split(r"\n\s*\n", p.read_text(errors="replace")):
+            para = " ".join(para.split())
+            if para and not para.startswith(("#", "<!--", "[![", "```", "|", "- ", "* ", ">")):
+                return re.split(r"(?<=[.!?])\s", para, maxsplit=1)[0][:200]
+    return ""
+
+
+def detect(repo: Path) -> Adoption:
+    """Read-only: what the files say. Tags name the stack, so the right standards apply; the
+    test and lint commands are the project's own scripts; the purpose is the README's first
+    sentence. The owner checks every value before `adopt` uses it."""
+    repo = Path(repo).expanduser().resolve()
+    tags: set[str] = set()
+    test = lint = ""
+    pkg = repo / "package.json"
+    if pkg.is_file():
+        try:
+            meta = json.loads(pkg.read_text(errors="replace"))
+        except ValueError:
+            meta = {}
+        deps = {**meta.get("dependencies", {}), **meta.get("devDependencies", {})}
+        scripts = meta.get("scripts", {})
+        tags.add("node")
+        if (repo / "tsconfig.json").is_file() or "typescript" in deps:
+            tags.add("typescript")
+        if "next" in deps:
+            tags |= {"nextjs", "web", "service"}
+        elif "react" in deps:
+            tags |= {"react", "web"}
+        if any(d.startswith("snowflake") for d in deps):
+            tags.add("snowflake")
+        if "test" in scripts:
+            test = "npm test"
+        lint = next((f"npm run {k}" for k in ("lint", "typecheck") if k in scripts), "")
+    pyproject = repo / "pyproject.toml"
+    if pyproject.is_file():
+        try:
+            meta = tomllib.loads(pyproject.read_text(errors="replace"))
+        except ValueError:
+            meta = {}
+        proj = meta.get("project", {})
+        tags.add("python")
+        if proj.get("scripts"):
+            tags.add("cli")
+        if (repo / "src").is_dir():
+            tags.add("package")
+        deps = " ".join(proj.get("dependencies", []))
+        if "snowflake" in deps:
+            tags.add("snowflake")
+        if "streamlit" in deps:
+            tags.add("streamlit-app")
+        test = test or "uv run pytest"
+        lint = lint or ("uv run ruff check" if "ruff" in json.dumps(meta) else "")
+    if (repo / "dbt_project.yml").is_file():
+        tags |= {"dbt", "pipeline"}
+    if (repo / "Dockerfile").is_file():
+        tags.add("docker")
+    for env in (".env", ".env.local", ".env.example"):       # variable names only, never values
+        p = repo / env
+        if p.is_file() and re.search(r"^SNOWFLAKE_", p.read_text(errors="replace"), re.MULTILINE):
+            tags.add("snowflake")
+    return Adoption(name=normalize_name(repo.name), purpose=_readme_purpose(repo), tags=sorted(tags),
+                    test_cmd=test, lint_cmd=lint)
+
+
+def adopt(repo: Path, a: Adoption, canon: Canon | None = None, skills: Skills | None = None,
+          adopt_all: bool = False, today: dt.date | None = None) -> list[str]:
+    """An existing repository joins the system: its manifest, an AGENTS.md (or the standards
+    section added to the one it has), a DECISIONS.md if it has none, and the pre-push hook. The
+    README and everything else stay as they are. Every applicable standard is pending until the
+    owner adopts or declines it from /status, unless `adopt_all`. Returns what was written."""
+    repo = Path(repo).expanduser()
+    if repo.is_symlink():
+        raise ValueError(f"refusing to write into {repo}: it is a symbolic link")
+    repo = repo.resolve()
+    if not repo.is_dir():
+        raise ValueError(f"{repo} is not a directory")
+    if (repo / ".ds" / "manifest.toml").exists():
+        raise FileExistsError(f"{repo} is already in the system (.ds/manifest.toml): run reconcile")
+    if not (repo / ".git").is_dir():
+        raise ValueError(f"{repo} is not a git repository: git init first, the pre-push hook needs it")
+    a.validate()
+    canon = canon or Canon()
+    skills = skills or Skills()
+    today = today or dt.date.today()
+    stds = canon.applicable(a.tags)
+    local = f"<!-- ds:local adopted {today} -->"
+    try:
+        index_stamp = str(json.loads((canon.root / "index.json").read_text()).get("generated", ""))
+    except (OSError, ValueError):
+        index_stamp = ""
+    written: list[str] = []
+
+    lines = ["[repo]", f"name = {_toml_str(a.name)}",
+             f"tags = [{', '.join(_toml_str(t) for t in a.tags)}]",
+             f'created = "{today}"', f'adopted = "{today}"',
+             *([f"test_cmd = {_toml_str(a.test_cmd)}"] if a.test_cmd else []),
+             *([f"lint_cmd = {_toml_str(a.lint_cmd)}"] if a.lint_cmd else []),
+             f'ds_version = "{__version__}"', f"canon = {_toml_str(str(canon.root))}",
+             f"canon_index = {_toml_str(index_stamp)}", ""]
+    if adopt_all:
+        for s in stds:
+            lines += [f"[standards.{s.id}]", 'status = "adopted"', f"version = {s.version}",
+                      f"by = {_toml_str(a.owner)}", f'on = "{today}"', ""]
+    manifest = _inside(repo, ".ds/manifest.toml")
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("\n".join(lines))
+    written.append(".ds/manifest.toml")
+
+    ids = ", ".join(f"[[{s.id}]]" for s in stds) or "none"
+    section = (f"{ADOPT_MARKER} {today} -->\n## Standards\n\n"
+               + (f"This repo follows {ids}.\n" if adopt_all else
+                  f"Standards that apply here, each pending until the owner adopts or declines it in "
+                  f"`.ds/manifest.toml` (`/status` in ds-next): {ids}.\n"))
+    agents = _inside(repo, "AGENTS.md")
+    if agents.exists():
+        text = agents.read_text(errors="replace")
+        if ADOPT_MARKER not in text:
+            agents.write_text(text.rstrip("\n") + "\n\n" + section)
+            written.append("AGENTS.md (standards section added)")
+    else:
+        named = [n for n in RECOMMENDED_SKILLS if n in skills.all]
+        skill_lines = "".join(f"- `/{n}`: {skills.all[n].description.split('. ')[0].rstrip('.')}.\n" for n in named)
+        own = "".join(f"- Project instructions: `{f}`.\n" for f in ("CLAUDE.md", "CONTEXT.md") if (repo / f).is_file())
+        agents.write_text(f"""# AGENTS.md
+
+{local}
+{a.purpose.strip()}
+
+{own}{f"- Test: `{a.test_cmd}`{chr(10)}" if a.test_cmd else ""}{f"- Lint: `{a.lint_cmd}`{chr(10)}" if a.lint_cmd else ""}- Before changing anything, read `.ds/manifest.toml`: it says which standards are in force here.
+- The team's knowledge base is served by `ds-next mcp` (canon_list, canon_read, code_search, code_get, code_add) for any agent that can reach it.
+
+{section}{f"{chr(10)}## Skills{chr(10)}{chr(10)}From skills-os:{chr(10)}{chr(10)}{skill_lines}" if skill_lines else ""}""")
+        written.append("AGENTS.md")
+
+    decisions = _inside(repo, "DECISIONS.md")
+    if not decisions.exists():
+        earlier = ("Earlier decisions are in `docs/adr/`; new ones go there too, and this file links them.\n"
+                   if (repo / "docs" / "adr").is_dir() else "None yet.\n")
+        decisions.write_text(f"""# Decisions
+
+{local}
+Local decisions for this repo, numbered local-001 upward. Team-wide decisions belong in the
+canon as standards; this file links them with `[[id]]` rather than restating them.
+
+{earlier}""")
+        written.append("DECISIONS.md")
+
+    problem = install_hook(repo)
+    if problem:
+        raise ScaffoldError(f"{repo} joined the system, but the pre-push hook is not installed: {problem}")
+    written.append(".git/hooks/pre-push")
+    return written
+

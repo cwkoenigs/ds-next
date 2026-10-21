@@ -188,6 +188,41 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
         return _text(f"created {parent / a.name} from {sc.id} v{sc.version}\n{r.summary()}\nfiles:\n"
                      + "\n".join(files))
 
+    @tool("adopt_repo", "Bring an existing repository into the knowledge system: writes its "
+          ".ds/manifest.toml, an AGENTS.md (or adds the standards section to the one it has), a "
+          "DECISIONS.md if it has none, and the pre-push hook. Nothing else changes. Standards stay "
+          "pending until the owner adopts them. Call with no overrides first: the reply shows what was "
+          "detected (purpose, owner, tags, test and lint), and the user corrects it.", {
+              "type": "object",
+              "properties": {
+                  "directory": {"type": "string", "description": "the repository; default cwd"},
+                  "purpose": {"type": "string", "description": "one line; default the README's first sentence"},
+                  "owner": {"type": "string", "description": "default the git user"},
+                  "tags": {"type": "array", "items": {"type": "string"}, "description": "default detected"},
+                  "adopt_all": {"type": "boolean", "description": "adopt every applicable standard now"},
+              },
+          })
+    async def adopt_repo(args):
+        args = dict(args)
+        repo = Path(args.get("directory") or cwd).expanduser()
+        try:
+            a = scaffold.detect(repo)
+            if args.get("purpose"):
+                a.purpose = args["purpose"]
+            if args.get("owner"):
+                a.owner = args["owner"]
+            if args.get("tags"):
+                a.tags = list(args["tags"])
+            written = scaffold.adopt(repo, a, canon, skills, adopt_all=bool(args.get("adopt_all")))
+            r = reconcile.check(repo.resolve(), canon)
+        except scaffold.ScaffoldError as e:
+            return _text(f"partly adopted: {e}", error=True)
+        except (ValueError, TypeError, FileExistsError) as e:
+            return _text(f"not adopted: {e}", error=True)
+        return _text(f"{repo.resolve()} joined the system\npurpose: {a.purpose}\nowner: {a.owner}\n"
+                     f"tags: {', '.join(a.tags)}\ntest: {a.test_cmd or 'none found'}\nlint: {a.lint_cmd or 'none found'}\n"
+                     f"wrote: {', '.join(written)}\n{r.summary()}")
+
     @tool("block_list", "List the canon's accepted code blocks: tested modules to add to a repo instead "
           "of writing that code yourself. Optional comma-separated tags filter them.", {"tags": str})
     async def block_list(args):
@@ -358,6 +393,8 @@ Rules:
   Otherwise, or once the user answers, call scaffold_get for the draft's scaffold and then
   scaffold_project with its version, passing the user's values unchanged unless they agreed to
   a change. Do not re-ask what the draft already answers.
+- An existing repository joins the system with adopt_repo, never by writing its manifest or
+  AGENTS.md yourself. Call it with no overrides, show what it detected, and let the user correct it.
 - If the user asks for a project in chat instead, propose a complete draft in one message
   (scaffold, name, purpose, and suggested values for the rest), ask for one confirmation, and
   create it the same way. Never ask one question at a time. Never write project files yourself.

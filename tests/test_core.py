@@ -161,3 +161,73 @@ def test_no_outputs_is_recorded_as_empty(tmp_path, canon, skills):
     assert 'type = "cli"' in m and "outputs = []" in m
     assert "Outputs:" not in (tmp_path / a.name / "README.md").read_text()
     assert reconcile.check(tmp_path / a.name, canon).outputs == []
+
+
+# ── an existing repository joins the system ──────────────────────────────────
+def _node_repo(root, readme="# shop\n\nDaily orders for the shop floor. More detail follows.\n\nSecond paragraph.\n"):
+    import json
+    import subprocess
+    root.mkdir(parents=True)
+    subprocess.run(["git", "-C", str(root), "init", "-q", "-b", "main"], check=True)
+    (root / "package.json").write_text(json.dumps({"dependencies": {"next": "15", "react": "19", "snowflake-sdk": "2"},
+                                                   "scripts": {"test": "node --test", "typecheck": "tsc --noEmit"}}))
+    (root / "tsconfig.json").write_text("{}")
+    (root / "README.md").write_text(readme)
+    (root / "CLAUDE.md").write_text("# shop\n\nproject instructions\n")
+    (root / "docs" / "adr").mkdir(parents=True)
+    return root
+
+
+def test_detect_reads_the_stack_and_the_readme(tmp_path):
+    d = scaffold.detect(_node_repo(tmp_path / "Shop Floor"))
+    assert d.name == "shop-floor"
+    assert d.tags == ["nextjs", "node", "service", "snowflake", "typescript", "web"]
+    assert d.purpose == "Daily orders for the shop floor."
+    assert (d.test_cmd, d.lint_cmd) == ("npm test", "npm run typecheck")
+
+
+def test_adopt_writes_only_the_system_files_and_leaves_standards_pending(tmp_path, canon, skills):
+    repo = _node_repo(tmp_path / "shop")
+    before = {p.name: p.read_text() for p in (repo / "README.md", repo / "CLAUDE.md")}
+    a = scaffold.detect(repo)
+    a.tags = ["python", "cli"]                      # the fixture canon's standards apply to these
+    written = scaffold.adopt(repo, a, canon, skills, today=dt.date(2026, 10, 20))
+    assert written == [".ds/manifest.toml", "AGENTS.md", "DECISIONS.md", ".git/hooks/pre-push"]
+    assert {p.name: p.read_text() for p in (repo / "README.md", repo / "CLAUDE.md")} == before
+    m = tomllib.loads((repo / ".ds" / "manifest.toml").read_text())
+    assert m["repo"]["name"] == "shop" and m["repo"]["tags"] == ["cli", "python"] and "standards" not in m
+    agents = (repo / "AGENTS.md").read_text()
+    assert "Project instructions: `CLAUDE.md`" in agents and "[[adr-000]]" in agents and "[[testing]]" in agents
+    assert "pending until the owner adopts" in agents
+    assert "docs/adr/" in (repo / "DECISIONS.md").read_text()
+    assert (repo / ".git" / "hooks" / "pre-push").stat().st_mode & 0o111
+    r = reconcile.check(repo, canon)
+    assert r.ok and r.pending == ["adr-000 v1", "testing v1"] and r.adopted == []
+    with pytest.raises(FileExistsError, match="already in the system"):
+        scaffold.adopt(repo, a, canon, skills)
+
+
+def test_adopt_all_adopts_and_an_existing_agents_md_gains_one_section(tmp_path, canon, skills):
+    repo = _node_repo(tmp_path / "shop")
+    (repo / "AGENTS.md").write_text("# AGENTS.md\n\nkeep this\n")
+    a = scaffold.detect(repo)
+    a.tags = ["python"]
+    written = scaffold.adopt(repo, a, canon, skills, adopt_all=True)
+    assert written[1] == "AGENTS.md (standards section added)"
+    agents = (repo / "AGENTS.md").read_text()
+    assert agents.startswith("# AGENTS.md\n\nkeep this\n") and agents.count("## Standards") == 1
+    assert "This repo follows [[adr-000]]" in agents
+    r = reconcile.check(repo, canon)
+    assert r.ok and r.pending == [] and r.adopted == ["adr-000", "testing"]
+
+
+def test_adopt_refuses_without_purpose_or_git(tmp_path, canon, skills):
+    repo = _node_repo(tmp_path / "shop", readme="# only a heading\n")
+    with pytest.raises(ValueError, match="purpose"):
+        scaffold.adopt(repo, scaffold.detect(repo), canon, skills)
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    (bare / "README.md").write_text("Does things.\n")
+    with pytest.raises(ValueError, match="git"):
+        scaffold.adopt(bare, scaffold.detect(bare), canon, skills)
+    assert not (bare / ".ds").exists()

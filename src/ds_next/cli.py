@@ -57,6 +57,34 @@ def new(name: str,
     out.print(S.labelled("canon", rep.summary()))
 
 
+@app.command()
+def adopt(path: Path = typer.Argument(Path("."), help="an existing repository"),
+          purpose: str = typer.Option("", help="one line; default: the README's first sentence"),
+          owner: str = typer.Option("", help="default: the git user"),
+          tags: str = typer.Option("", help="comma-separated; default: detected from the files"),
+          adopt_all: bool = typer.Option(False, "--adopt-all",
+                                         help="adopt every applicable standard now instead of leaving them pending")):
+    """Bring an existing repository into the system: manifest, AGENTS.md, DECISIONS.md and the
+    pre-push hook. Nothing else changes; standards are pending until adopted from /status."""
+    a = scaffold.detect(path)
+    if purpose:
+        a.purpose = purpose
+    if owner:
+        a.owner = owner
+    if tags:
+        a.tags = [t.strip() for t in tags.split(",") if t.strip()]
+    try:
+        written = scaffold.adopt(path, a, adopt_all=adopt_all)
+    except (ValueError, FileExistsError, scaffold.ScaffoldError) as e:
+        _err(f"not adopted: {e}")
+        raise typer.Exit(2)
+    out.print(S.outcome("ok", a.name, f"joined the system · {', '.join(a.tags) or 'no tags'}"))
+    for k, v in (("purpose", a.purpose), ("owner", a.owner), ("test", a.test_cmd or "none found"),
+                 ("lint", a.lint_cmd or "none found"), ("wrote", ", ".join(written))):
+        out.print(S.labelled(k, v))
+    _report(path.resolve(), reconcile_mod.check(path.resolve()))
+
+
 def _report(repo: Path, rep) -> None:
     kind = "ok" if rep.ok and not rep.pending else ("warn" if rep.ok else "err")
     out.print(S.outcome(kind, repo.name, rep.counts()))
@@ -178,7 +206,7 @@ def setup(check: bool = typer.Option(False, "--check", help="report what would c
 
 @app.command()
 def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from a file"),
-        yes: bool = typer.Option(False, "--yes", help="allow ds write tools (scaffold, block_add, code_add, capture)"),
+        yes: bool = typer.Option(False, "--yes", help="allow ds write tools (scaffold, adopt, block_add, code_add, capture)"),
         yes_all: bool = typer.Option(False, "--yes-all", help="allow every tool, Bash and file edits included"),
         effort: str = typer.Option("low", "--effort", help="thinking effort: minimal, low, medium, high, max"),
         model: str | None = typer.Option(None, "--model", "-m")):
