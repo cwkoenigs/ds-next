@@ -5,7 +5,8 @@ A sample CLI built on **Rule**, the ds-next terminal design system in the Modern
 The design pages are `../pages/Rule Terminal Design System.dc.html` and `../pages/Rule Screens.dc.html`, from the Claude Design export.
 
 ```sh
-uv pip install -e .         # needs Python 3.10+, installs rich
+uv pip install -e .         # needs Python 3.10+, installs rich into the nearest .venv (the repo root's)
+source ../../../.venv/bin/activate   # puts rule-cli on your PATH (Windows: ..\..\..\.venv\Scripts\activate)
 rule-cli                    # the tour: every section, enter between chapters
 rule-cli chapters           # list the 19 chapters
 rule-cli tour -c 3          # one chapter (3 = colour roles)
