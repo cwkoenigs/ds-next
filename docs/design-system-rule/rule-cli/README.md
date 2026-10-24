@@ -2,10 +2,10 @@
 
 A sample CLI built on **Rule**, the ds-next terminal design system in the Modernist direction. The whole spec is in the source, and the CLI walks through every part of it.
 
-The design pages are `project/Rule Terminal Design System.dc.html` and `project/Rule Screens.dc.html`, from the Claude Design export.
+The design pages are `../pages/Rule Terminal Design System.dc.html` and `../pages/Rule Screens.dc.html`, from the Claude Design export.
 
 ```sh
-pip install -e .            # needs Python 3.10+, installs rich
+uv pip install -e .         # needs Python 3.10+, installs rich
 rule-cli                    # the tour: every section, enter between chapters
 rule-cli chapters           # list the 19 chapters
 rule-cli tour -c 3          # one chapter (3 = colour roles)
