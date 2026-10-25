@@ -57,6 +57,20 @@ def test_scaffold_tool_then_status(tmp_path, canon, skills):
     assert err and "not empty" in again
 
 
+def test_adopt_repo_is_offered_and_asks(tmp_path, canon, skills):
+    # the prompt sends the agent to adopt_repo; it was defined but missing from the tools
+    tools = agent.tools(canon, skills, tmp_path)
+    assert "adopt_repo" in {t.name for t in tools}
+    assert "mcp__ds__adopt_repo" not in agent.READ_ONLY_IDS      # writes always ask
+    repo = tmp_path / "old-app"
+    repo.mkdir()
+    (repo / "README.md").write_text("# Old app\n\nTurns orders into reports.\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    text, err = call(tools, "adopt_repo", {"directory": str(repo), "owner": "Ann"})
+    assert not err and "joined the system" in text
+    assert (repo / ".ds" / "manifest.toml").is_file()
+
+
 def test_capture_writes_a_canon_shaped_draft(tmp_path, canon, skills):
     text, _ = call(agent.tools(canon, skills, tmp_path), "capture",
                    {"title": "SPCS images need linux/amd64", "body": "Build with --platform."})
