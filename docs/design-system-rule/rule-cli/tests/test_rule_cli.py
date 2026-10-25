@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from rule_cli import screens as S
 from rule_cli import spec
 from rule_cli import ui_style as u

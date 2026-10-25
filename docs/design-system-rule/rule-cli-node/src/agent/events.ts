@@ -8,7 +8,8 @@ export type AgentEvent =
 	| {kind: 'tool'; id: string; name: string; input: Record<string, unknown>}
 	| {kind: 'toolResult'; id: string; text: string; isError: boolean}
 	| {kind: 'result'; ok: boolean; durationMs: number; costUsd?: number; errors: string[]}
-	| {kind: 'error'; message: string};
+	| {kind: 'error'; message: string}
+	| {kind: 'note'; text: string}; // a fact from the terminal itself, e.g. the code graph's refresh
 
 type Block = {type: string; [k: string]: unknown};
 type Msg = {type: string; subtype?: string; [k: string]: unknown};

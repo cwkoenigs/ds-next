@@ -54,13 +54,37 @@ rule agent --agent claude --model claude-sonnet-5-5
   - Each tool shows as ▫ while it runs, then lands as ▪ with its result as a fact (`142 lines`, `+14 −1`).
   - Replies print as Rule Markdown: uppercase headings, code on the surface colour.
   - Each turn ends with `N tools  12.3s  $0.0123` (Cortex reports no cost).
-- **Approvals:** anything that writes a file or runs a command opens the approval dialog. `1` yes, `2` don't ask again for that tool this session, `3` or `esc` declines and stops the turn so you can say what to do instead. The terminal's own read-only tool, `rule_spec` (the agent can read this design system), never asks.
+- **Approvals:** anything that writes a file or runs a command opens the approval dialog. `1` yes, `2` don't ask again for that tool this session, `3` or `esc` declines and stops the turn so you can say what to do instead. Reading never asks: ds's read-only tools, `rule_spec`, and the code graph's and LSP's reads.
 - **Keys:** `esc` interrupts a turn, `ctrl-o` opens the last fold, and messages typed mid-turn are queued.
 - **Commands:** `/status`, `/model <name>`, `/clear` (new conversation) and `/exit` are local; any other `/command` goes to the agent.
 - **Stalls:** a turn silent for 10 minutes, outside an approval, is interrupted, as in ds-next. The next message carries on the same session.
 
-What it doesn't have yet is ds-next's own tools (canon, scaffolds, code search, `scaffold_project`). Those are the next step: the `ds` server in `src/agent/backend.ts` is where they go, next to `rule_spec`.
+### ds-next's tools
 
+The agent gets ds-next's tools, ported to TypeScript in `src/ds/`, with the same names, descriptions and arguments, and ds-next's own system prompt:
+
+- **Reads, never asked:** `canon_list`, `canon_read`, `skills_list`, `skill_read`, `project_status`, `scaffold_list`, `scaffold_get`, `block_list`, `block_get`, `code_search`, `code_get`, `snowflake_search`.
+- **Writes, each through the approval dialog:** `scaffold_project` (only from a scaffold the agent fetched this session), `adopt_repo`, `block_add`, `code_add`, `capture`.
+- **The code graph and the LSP** (`codebase-memory-mcp`, `serena`) are attached when installed, as in ds-next. The graph is refreshed when the session starts.
+
+They read the canon and skills-os where ds-next does: `DS_CANON` and `DS_SKILLS`, else `~/Developer`, `~/code` or `~/.ds`. Without a canon the session still starts, and each tool that needs it says what to set up.
+
+`code_get` and `code_add` cut a canon module down to the symbols asked for, using Python's own syntax tree. That one step runs ds-next's functions, copied unchanged into `python/code_cut.py`, with Python 3.10 or newer: `DS_PYTHON` if set, else `uv`, `python3`, `python` (or `py -3` on Windows). Repos created here get the same pre-push hook as ds-next's, which runs `ds-next reconcile`.
+
+**Parity with ds-next.** `test/parity/run.sh` runs ds-next's Python tools and this port through the same 229 steps on a real canon and skills-os, then compares everything. That covers every standard, skill, scaffold and block read, `code_get` on every indexed symbol, a project created from each accepted scaffold (every file compared), `block_add`, `code_add`, `capture`, adopting two existing repos, and reconcile on broken manifests.
+
+```sh
+DS_CANON=~/Developer/canon DS_SKILLS=~/Developer/skills-os sh test/parity/run.sh
+```
+
+Two differences are expected:
+- `canon_read` of an unknown id: ds-next's message carries extra quotes, a side effect of Python's `KeyError`.
+- A manifest that isn't valid TOML: the error is worded by a different parser.
+
+**Where the port departs from ds-next, on purpose:**
+- **`adopt_repo` is offered to the agent.** ds-next defines it and its prompt tells the agent to use it, but it's missing from the tools ds-next registers.
+- **List arguments are read as lists.** A list passed for `tags` or `ids` reads as the comma-separated string; ds-next would read the list's Python text.
+- **A tool that fails says why.** A canon that no longer matches its index returns an `ERROR:` result instead of an exception.
 ## What's where
 
 | File | Holds |
@@ -73,6 +97,9 @@ What it doesn't have yet is ds-next's own tools (canon, scaffolds, code search, 
 | `src/screens.ts` | The seven screens and the spec page's mockups |
 | `src/tour/`, `src/demo/` | The walkthrough and the faked live session |
 | `src/agent/` | `rule agent`: the backend choice and session (`backend.ts`), SDK messages reduced to a few events (`events.ts`), how tool calls read (`present.ts`), Markdown as rows (`markdown.ts`), and the app (`AgentApp.tsx`) |
+| `src/ds/` | ds-next's knowledge base and tools, ported: `kb.ts` (canon, skills), `scaffold.ts` (new projects, adopting, blocks), `reconcile.ts`, `code.ts`, `codetools.ts`, `tools.ts` (the 17 agent tools and the system prompt), `py.ts` (the bits of Python behaviour the files depend on) |
+| `python/code_cut.py` | ds-next's code-cutting functions, unchanged, for `code_get` and `code_add` |
+| `test/parity/` | The comparison with ds-next's Python |
 | `src/html.ts` | `rule html` |
 
 ## Using the components
@@ -93,10 +120,11 @@ Write the transcript once with `useTranscript()` and `<Transcript>`, built on In
 ## Checks
 
 ```sh
-npm test           # 38 tests: every row fits 80 columns and every frame is exactly 80, the box stays closed
+npm test           # 55 tests: every row fits 80 columns and every frame is exactly 80, the box stays closed
                    # while wrapping, the spec is complete, the demo, tour and agent session driven by
-                   # keystrokes (the agent scripted), the permission gate, and both SDKs load
+                   # keystrokes (the agent scripted), the permission gate, both SDKs build all 17 tools,
+                   # and the ds port on a small canon (render, write, reconcile, blocks, code, tools)
 npm run typecheck
 ```
 
-Dependencies are pinned to exact versions at least two weeks old, except `@snowflake/cortex-agent-sdk`, pinned at 0.0.2, the same version ds-next uses in Python (its versions are all newer than that). Ink 6.8 runs on Node 20; Ink 7 needs Node 22.
+Dependencies are pinned to exact versions at least two weeks old, except `@snowflake/cortex-agent-sdk`, pinned at 0.0.2 (released 2026-10-13) because it is the version ds-next runs in Python. Ink 6.8 runs on Node 20; Ink 7 needs Node 22.

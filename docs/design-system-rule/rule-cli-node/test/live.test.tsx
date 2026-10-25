@@ -9,7 +9,8 @@ const tick = (ms = 30) => new Promise(r => setTimeout(r, ms));
 const ENTER = '\r';
 const DOWN = '\u001B[B';
 
-async function until(frame: () => string | undefined, test: (f: string) => boolean, ms = 3000) {
+// Waits end as soon as the frame matches; the ceiling only matters on a loaded machine.
+async function until(frame: () => string | undefined, test: (f: string) => boolean, ms = 10_000) {
 	const end = Date.now() + ms;
 	while (Date.now() < end) {
 		if (test(frame() ?? '')) return frame() ?? '';

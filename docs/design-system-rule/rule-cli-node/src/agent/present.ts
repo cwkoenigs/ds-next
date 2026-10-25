@@ -1,6 +1,6 @@
 // How an agent's tool calls read in Rule: a short name, the one argument that matters, a result
 // as a fact (142 lines, +14 −1), and what the approval dialog says.
-import {relative} from 'node:path';
+import {join, relative} from 'node:path';
 import * as b from '../builders.js';
 import {bold, type Row, s} from '../text.js';
 
@@ -87,8 +87,9 @@ export function resultSummary(name: string, input: Record<string, unknown>, text
 
 /** The landed tool line and its result rows. */
 export function landed(name: string, input: Record<string, unknown>, cwd: string, text: string, isError: boolean): Row[] {
-	const {first, more} = resultSummary(name, input, text, isError);
-	return [b.tool(displayName(name), toolArgs(name, input, cwd), isError ? 'failed' : 'done'), ...b.result(first, more, {error: isError})];
+	const failed = isError || text.startsWith('ERROR: '); // Cortex drops is_error; ds tools also say so in their first word
+	const {first, more} = resultSummary(name, input, text, failed);
+	return [b.tool(displayName(name), toolArgs(name, input, cwd), failed ? 'failed' : 'done'), ...b.result(first, more, {error: failed})];
 }
 
 /** Title and body of the approval dialog for a tool call. */
@@ -112,6 +113,22 @@ export function askContent(name: string, input: Record<string, unknown>, cwd: st
 		}
 		case 'WebFetch':
 			return {title: 'Fetch', body: [[bold(fit(str(input, 'url')))], [s(fit(str(input, 'prompt')), 'muted')]]};
+		// ds's own writes say what they will create, in the person's terms
+		case 'scaffold_project': {
+			const where = relative(cwd, join(str(input, 'directory') || cwd, str(input, 'name'))) || str(input, 'name');
+			return {
+				title: 'Create project',
+				body: [[bold(fit(where))], [s(fit(`${str(input, 'scaffold')} v${String(input['scaffold_version'] ?? '?')}  ${str(input, 'purpose')}`), 'muted')]],
+			};
+		}
+		case 'adopt_repo':
+			return {title: 'Adopt repository', body: [[bold(fit(str(input, 'directory') || cwd))], [s('writes .ds/manifest.toml, AGENTS.md, DECISIONS.md and the pre-push hook', 'muted')]]};
+		case 'block_add':
+			return {title: 'Add canon block', body: [[bold(fit(str(input, 'id')))], [s('copies its module and tests into this repo', 'muted')]]};
+		case 'code_add':
+			return {title: 'Add canon code', body: [[bold(fit(str(input, 'ids', 'id', 'name', 'symbols')))], [s('copies these symbols and their tests into this repo', 'muted')]]};
+		case 'capture':
+			return {title: 'Capture draft', body: [[bold(fit(str(input, 'title')))], [s('writes a proposed standard to .ds/captures for review', 'muted')]]};
 		default: {
 			const json = JSON.stringify(input);
 			return {title: shown.replace(/_/g, ' '), body: [[bold(shown)], [s(fit(json === '{}' ? 'no arguments' : json), 'muted')]]};

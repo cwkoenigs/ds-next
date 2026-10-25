@@ -7,6 +7,9 @@ import {existsSync, readFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {delimiter, join} from 'node:path';
 import {z} from 'zod';
+import * as codetools from '../ds/codetools.js';
+import {Canon, Skills} from '../ds/kb.js';
+import {type DsTool, runTool, systemPrompt as dsPrompt, tools as dsTools} from '../ds/tools.js';
 import * as spec from '../spec.js';
 import {type AgentEvent, normalize} from './events.js';
 
@@ -67,9 +70,15 @@ export interface AgentSession {
 
 export class AgentUnavailable extends Error {}
 
-/** The terminal's own tools, served in-process as the `ds` MCP server. Reading never asks. */
+/** The terminal's own tools, served in-process as the `ds` MCP server: ds-next's tools (src/ds/tools.ts)
+ *  and rule_spec. Reading never asks. */
 export const SERVER = 'ds';
 export const READ_ONLY = new Set([`mcp__${SERVER}__rule_spec`]);
+
+/** Every tool id that never asks: rule_spec, ds-next's read-only tools, the graph's and the LSP's reads. */
+export function readOnlyIds(tools: DsTool[], servers: Record<string, unknown>): Set<string> {
+	return new Set([...READ_ONLY, ...tools.filter(t => t.readOnly).map(t => `mcp__${SERVER}__${t.name}`), ...codetools.readOnlyIds(servers)]);
+}
 
 const SECTIONS = ['summary', 'principles', 'colour', 'glyphs', 'grid', 'motion', 'mascot', 'codeMap', 'screens', 'knownGaps'] as const;
 
@@ -80,14 +89,17 @@ export function ruleSpec(section?: string): string {
 	return JSON.stringify(all[section], null, 1);
 }
 
-export function systemPrompt(cwd: string): string {
-	return `You are ds, the team's assistant, running in a terminal drawn in Rule, the ds-next terminal design system.
+/** ds-next's system prompt, then one line for rule_spec. Without a canon on this machine, a short
+ *  prompt that says so, so the agent can tell the person what to set up. */
+export function systemPrompt(cwd: string, canon?: Canon, skills?: Skills): string {
+	const rule = 'This terminal is drawn in Rule, the ds-next terminal design system; rule_spec reads its spec.';
+	if (canon && skills) return `${dsPrompt(cwd, canon, skills)}\n\n${rule}`;
+	return `You are ds, the front door to the team's knowledge system, running in a terminal.
 
-- Your \`ds\` tools are the terminal's own. rule_spec reads the Rule design system: principles, colour roles, glyphs, grid, motion, screens.
-- Anything that writes a file or runs a command asks the person first, in a dialog. If they decline, stop and wait for them to say what to do instead.
-- Be brief. This is a terminal: facts, not sentences.
+The canon was not found on this machine (set DS_CANON or clone it to ~/Developer/canon), so the \`ds\` tools that read it will say so. Tell the person if they ask about standards, scaffolds or accepted code.
+- Be brief. This is a terminal.
 
-The working directory is ${cwd}. Today is ${new Date().toISOString().slice(0, 10)}.`;
+${rule} The working directory is ${cwd}.`;
 }
 
 /** Cortex asks about in-process tools as kind "MCP" with a resource string whose first line names the tool. */
@@ -146,12 +158,12 @@ function inbox() {
 
 /** The SDK's canUseTool: reading the terminal's own tools never asks; everything else asks the
  *  person, and "don't ask again" lasts for the session. */
-export function permissionGate(ask: Ask) {
+export function permissionGate(ask: Ask, readOnly: Set<string> = READ_ONLY) {
 	const always = new Set<string>();
 	return async (name: string, input: Record<string, unknown>) => {
 		const id = toolId(name, input);
 		let answer: Answer = 'yes';
-		if (!READ_ONLY.has(id) && !always.has(id)) answer = await ask(id, input);
+		if (!readOnly.has(id) && !always.has(id)) answer = await ask(id, input);
 		if (answer === 'always') always.add(id);
 		return answer === 'no'
 			? {behavior: 'deny' as const, message: 'The person declined this and will say what to do instead.', interrupt: true}
@@ -160,11 +172,17 @@ export function permissionGate(ask: Ask) {
 }
 
 /** The `ds` MCP server, built with the loaded SDK's own helpers. */
-export function dsServer(sdk: Sdk): unknown {
+export function dsServer(sdk: Sdk, tools: DsTool[] = []): unknown {
 	return sdk.createSdkMcpServer({
 		name: SERVER,
 		version: '0.1.0',
 		tools: [
+			...tools.map(t =>
+				sdk.tool(t.name, t.description, t.shape, async (args: Record<string, unknown>) => {
+					const r = await runTool(t, args);
+					return {content: [{type: 'text', text: r.text}], isError: r.error};
+				}),
+			),
 			sdk.tool(
 				'rule_spec',
 				'Read the Rule terminal design system spec this terminal is drawn in. Pass a section, or omit it for everything.',
@@ -192,26 +210,41 @@ export async function openSession(o: SessionOptions): Promise<AgentSession> {
 		throw new AgentUnavailable(`Cortex Code CLI not found: ${where}. Install it, or run with --agent claude.`);
 	}
 	const sdk = await load(o.backend);
-	const server = dsServer(sdk);
-	const canUseTool = permissionGate(o.ask);
+	// The canon and skills are read on first use, so a machine without them still gets a session.
+	let canon: Canon | undefined;
+	let skills: Skills | undefined;
+	const ctx = {cwd: o.cwd, connection: o.connection, canon: () => (canon ??= new Canon()), skills: () => (skills ??= new Skills())};
+	try {
+		ctx.canon();
+		ctx.skills();
+	} catch {
+		// reported by the prompt and by each tool that needs them
+	}
+	const tools = dsTools(ctx);
+	const code = codetools.mcpServers(o.cwd);
+	const canUseTool = permissionGate(o.ask, readOnlyIds(tools, code));
+	const prompt = systemPrompt(o.cwd, canon, skills);
 	const abortController = new AbortController();
-	const common = {cwd: o.cwd, mcpServers: {[SERVER]: server}, canUseTool, model: o.model, effort: o.effort, resume: o.resume, abortController};
+	const common = {cwd: o.cwd, mcpServers: {[SERVER]: dsServer(sdk, tools), ...code}, canUseTool, model: o.model, effort: o.effort, resume: o.resume, abortController};
 	const options =
 		o.backend === 'claude'
 			? {
 					...common,
 					strictMcpConfig: true, // the terminal's own servers only
-					systemPrompt: {type: 'preset', preset: 'claude_code', append: systemPrompt(o.cwd)},
+					systemPrompt: {type: 'preset', preset: 'claude_code', append: prompt},
 					settingSources: ['user', 'project'], // the repo's CLAUDE.md and the user's settings, as a normal session has
 					permissionMode: 'default', // approvals come to the dialog, not to auto mode
 				}
 			: {
 					...common,
 					// No allowedTools: Cortex treats that list as exclusive. Read-only tools are allowed in canUseTool.
-					appendSystemPrompt: systemPrompt(o.cwd),
+					appendSystemPrompt: prompt,
 					connection: o.connection,
 					onlyExplicitMcpServers: true, // skip the user's mcp.json, or `ds` tools appear twice
 				};
+
+	// Refresh the code graph alongside the first turn, as ds-next does when it connects.
+	if (codetools.graphBin() && existsSync(join(o.cwd, '.git'))) void codetools.index(o.cwd).then(text => o.onEvent({kind: 'note', text}));
 
 	const box = inbox();
 	const q = sdk.query({prompt: box.messages(), options});

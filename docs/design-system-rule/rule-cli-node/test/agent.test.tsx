@@ -5,12 +5,15 @@ import {type AgentSession, type Answer, chooseBackend, dsServer, load, openSessi
 import {normalize} from '../src/agent/events.js';
 import {agentRows} from '../src/agent/markdown.js';
 import {displayName, resultSummary, toolArgs} from '../src/agent/present.js';
+import {Canon, Skills} from '../src/ds/kb.js';
+import {tools as dsTools} from '../src/ds/tools.js';
 import {plain, width} from '../src/text.js';
 
 const tick = (ms = 20) => new Promise(r => setTimeout(r, ms));
 const ENTER = '\r';
 
-async function until(frame: () => string | undefined, test: (f: string) => boolean, ms = 3000) {
+// Waits end as soon as the frame matches; the ceiling only matters on a loaded machine.
+async function until(frame: () => string | undefined, test: (f: string) => boolean, ms = 10_000) {
 	const end = Date.now() + ms;
 	while (Date.now() < end) {
 		if (test(frame() ?? '')) return frame() ?? '';
@@ -184,12 +187,14 @@ describe('backends', () => {
 		delete process.env['DS_AGENT'];
 	});
 
-	it.each(['claude', 'cortex'] as const)('%s: the SDK loads and builds the ds tools', async backend => {
+	it.each(['claude', 'cortex'] as const)('%s: the SDK loads and builds the ds server with every tool', async backend => {
 		const sdk = await load(backend);
 		expect(typeof sdk.query).toBe('function');
-		const server = dsServer(sdk) as {type?: string; name?: string};
+		const all = dsTools({cwd: '.', canon: () => new Canon('/nowhere'), skills: () => new Skills('/nowhere')});
+		const server = dsServer(sdk, all) as {type?: string; name?: string; instance?: unknown};
 		expect(server.type).toBe('sdk');
 		expect(server.name).toBe('ds');
+		expect(all).toHaveLength(17);
 	});
 
 	it('says when the Cortex CLI is missing instead of hanging', async () => {

@@ -146,6 +146,9 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 					endTurn();
 					return;
 				}
+				case 'note':
+					printRows([b.facts(e.text)]);
+					return;
 				case 'error':
 					printRows([[], ...outcome('err', label, e.message, w), []]);
 					last.current = 'none';
