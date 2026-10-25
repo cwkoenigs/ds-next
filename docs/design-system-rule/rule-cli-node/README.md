@@ -2,6 +2,8 @@
 
 The reference CLI for **Rule**, the ds-next terminal design system in the Modernist direction, built in TypeScript with [Ink](https://github.com/vadimdemedes/ink). The whole spec is in the source, `rule` walks through every part of it, and `rule demo` runs a live session drawn in Rule. The components are the design system in code, so a CLI built in this style can import them instead of redrawing frames by hand.
 
+The agent terminal also comes in **Rail**, the look ds-next ships today: steel blue on graphite, the dog and the cat, Cortex Code's rounded box. One CLI, two looks: `--look rail` (or `DS_LOOK=rail`) changes how it's drawn, nothing else. See [Two looks](#two-looks-rule-and-rail).
+
 It matches the Python `../rule-cli/`. The one difference is that the input box here stays closed on all four sides while you type, which prompt_toolkit couldn't do.
 
 ## Run it
@@ -23,6 +25,13 @@ rule spec --json           # the spec as data
 rule html -o tour.html     # the tour as one web page, readable on a phone
 rule demo                  # a live session with a faked agent: type, / for commands, ? for keys
 rule agent                 # a real session with Cortex Code or Claude Code (see below)
+```
+
+```sh
+rule demo --look rail      # the agent terminal in Rail, with a scripted agent: no login needed
+rule agent --look rail     # a real session in Rail; or set DS_LOOK=rail once in your shell profile
+rule screen --look rail    # Rail's ten screens, dark and light
+rule html --look rail      # Rail's screens as one web page (rail-screens.html), readable on a phone
 ```
 
 Options: `--theme dark|light` sets the theme for the prose and the demo. `--color truecolor|ansi16|none` forces the colour depth (otherwise it's whatever the terminal supports; 256-colour terminals like macOS Terminal get the palette downsampled). `--one-theme` shows each mockup only once. `--no-pause` prints the tour straight through, which also happens when the output is piped. To remove the command later: `npm rm -g rule-cli`.
@@ -85,6 +94,34 @@ Two differences are expected:
 - **`adopt_repo` is offered to the agent.** ds-next defines it and its prompt tells the agent to use it, but it's missing from the tools ds-next registers.
 - **List arguments are read as lists.** A list passed for `tags` or `ids` reads as the comma-separated string; ds-next would read the list's Python text.
 - **A tool that fails says why.** A canon that no longer matches its index returns an `ERROR:` result instead of an exception.
+
+## Two looks: Rule and Rail
+
+`--look` picks how `rule agent`, `rule demo`, `rule screen` and `rule html` are drawn. Default: `$DS_LOOK`, else `rule`. The tour and the spec are Rule's own, so they don't change.
+
+| | Rule | Rail |
+|---|---|---|
+| What it is | This design system: ink, one red, heavy square frames, the canoe | ds-next's: steel blue on graphite, the dog and the cat, ok/warn/err in green, amber and red |
+| A turn | `━━ 03 ━━` opens it; ■ the agent, ▫ a running tool that lands as ▪, `└` its result | The box you typed in stays in the scrollback; `#3`, then one rail: ● the agent, `│ → Tool`, `│   ⎿ result`, `╰ #3 · 2 tool calls · 12.3s · $0.01` |
+| Thinking | Folds to `· Thought for 3s` (`ctrl-o` opens it) | Stays private, as ds-next and Claude Code keep it; the spinner says `Thinking` |
+| The box | Heavy, square, as wide as the terminal; a bare status row under it | Cortex Code's: rounded, the session tag (`New session`, `#2`) on a band in the top rule, the `/` menu below, a toolbar under it: the folder, where the repo stands against the canon, model, effort, connected |
+| Approval | A red dialog in place of the box: `1` `2` `3`, or `↑↓` and `enter` | A warn-edged frame on the rail, `Allow Bash?`, the whole input; type `y`, `a` or `n` and `enter`. Enter alone asks again |
+| Spinner | `▘ Drafting  4s  esc interrupts`, quadrants at 160 ms | `◐ Running canon_read · 4s · ctrl-c interrupts`, at 125 ms |
+| `ctrl-c` | Leaves | Interrupts a turn; at the prompt it clears the line, and a second press within two seconds leaves |
+
+Everything else is shared: the agent and its tools, the queue, `esc`, the watchdog, and the commands (`/status`, `/model`, `/last`, `/clear`, `/help`, `/exit`).
+
+**Rail comes from ds-next itself.** The palette, ANSI-16 fallbacks, glyphs, spinner, grid and mascot in `src/rail/tokens.ts` are `src/ds_next/ui_style.py`'s values, and a test reads that file and checks every one. The builders in `src/rail/builders.ts` are its functions with the same names (`run`, `result`, `footer`, `frame`, `banner`, `promptBox`, `toolbar`...). The owner's departures from the design handoff are kept: the rounded box with the session tag, the brighter banner, ctrl-c twice to leave.
+
+**Where Rail here departs from ds-next:**
+- **Long lines wrap inside the box,** and the box that stays in the scrollback keeps the whole line. ds-next's box scrolls sideways and its echo is cut at the box's width.
+- **The box stays up during a turn,** so you can queue the next message. ds-next shows only the spinner. `esc` interrupts too, besides `ctrl-c`.
+- **`ctrl-o` opens the last tool output,** as the result line says. ds-next prints that hint but only `/last` does it; `/last` works here as well.
+- **The banner names the agent** (Cortex Code or Claude Code; ds-next runs only Cortex) and points to `/help` and `?`. ds-next's local `/new`, `/adopt`, `/canon`, `/skills`, `/docs` and `/captures` forms aren't ported. Asking for those things in words goes to the agent, which has the same tools.
+- **Markdown** headings are bold, flush left; fenced code is muted. Rich centres headings and highlights code.
+
+**Fixed along the way, in both looks:** the box could send an older line. Keys go to the handler from the last render, so when `enter` came before React had redrawn after the previous key (fast typing, a paste, a busy machine), it sent what the line held before. The approval and the dialog had the same fault: a quick `y` `enter` could read as an empty answer. Each now keeps what was typed where every key reads it at once.
+
 ## What's where
 
 | File | Holds |
@@ -96,11 +133,13 @@ Two differences are expected:
 | `src/components/` | The design system as Ink components: static ones in `rule.tsx`, live ones in `live.tsx` (`Working`, `InputBox`, `Footing`, `DialogPicker`, `useLineEditor`), the write-once transcript, and `LiveTurn` |
 | `src/screens.ts` | The seven screens and the spec page's mockups |
 | `src/tour/`, `src/demo/` | The walkthrough and the faked live session |
-| `src/agent/` | `rule agent`: the backend choice and session (`backend.ts`), SDK messages reduced to a few events (`events.ts`), how tool calls read (`present.ts`), Markdown as rows (`markdown.ts`), and the app (`AgentApp.tsx`) |
+| `src/agent/` | `rule agent`: the backend choice and session (`backend.ts`), SDK messages reduced to a few events (`events.ts`), how tool calls read (`present.ts`), Markdown as rows (`markdown.ts`), the two looks (`looks.tsx`: everything that differs between Rule and Rail), what this machine has for the banner and toolbar (`desk.ts`), and the app (`AgentApp.tsx`) |
+| `src/rail/` | Rail: `tokens.ts` (ds-next's `ui_style.py` values), `builders.ts` (its line builders, frames, banner, box, toolbar, menu, approval), `screens.ts` (the ten screens) |
+| `src/demo/scripted.ts` | The scripted agent behind `rule demo --look rail` |
 | `src/ds/` | ds-next's knowledge base and tools, ported: `kb.ts` (canon, skills), `scaffold.ts` (new projects, adopting, blocks), `reconcile.ts`, `code.ts`, `codetools.ts`, `tools.ts` (the 17 agent tools and the system prompt), `py.ts` (the bits of Python behaviour the files depend on) |
 | `python/code_cut.py` | ds-next's code-cutting functions, unchanged, for `code_get` and `code_add` |
 | `test/parity/` | The comparison with ds-next's Python |
-| `src/html.ts` | `rule html` |
+| `src/html.ts`, `src/html-page.ts` | `rule html`: the tour page, and with `--look rail` the Rail screens page |
 
 ## Using the components
 
@@ -120,10 +159,11 @@ Write the transcript once with `useTranscript()` and `<Transcript>`, built on In
 ## Checks
 
 ```sh
-npm test           # 55 tests: every row fits 80 columns and every frame is exactly 80, the box stays closed
+npm test           # 74 tests: every row fits 80 columns and every frame is exactly 80, the box stays closed
                    # while wrapping, the spec is complete, the demo, tour and agent session driven by
-                   # keystrokes (the agent scripted), the permission gate, both SDKs build all 17 tools,
-                   # and the ds port on a small canon (render, write, reconcile, blocks, code, tools)
+                   # keystrokes (the agent scripted) in both looks, Rail's tokens against ds-next's
+                   # ui_style.py, the permission gate, both SDKs build all 17 tools, and the ds port on
+                   # a small canon (render, write, reconcile, blocks, code, tools)
 npm run typecheck
 ```
 

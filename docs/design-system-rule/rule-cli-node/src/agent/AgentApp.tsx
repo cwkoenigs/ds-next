@@ -1,55 +1,38 @@
-// `rule agent`: a real session with Claude Code or Cortex Code, drawn in Rule. Each event lands in
-// the transcript once; the live area holds only the running tools, the spinner and the footing.
+// `rule agent`: a real session with Claude Code or Cortex Code, drawn in Rule or in Rail (--look).
+// Each event lands in the transcript once; the live area holds only what is still happening (the
+// running tools, the spinner) and the footing. How each thing reads is the look's (looks.tsx).
 import {Box, useApp, useInput} from 'ink';
-import {homedir} from 'node:os';
 import {useCallback, useEffect, useRef, useState} from 'react';
-import * as b from '../builders.js';
 import {Lines} from '../components/Lines.js';
-import {DialogPicker, Footing, useLineEditor, Working} from '../components/live.js';
-import {StatusRow} from '../components/rule.js';
+import {useLineEditor, Working} from '../components/live.js';
 import {Transcript, useTranscript} from '../components/transcript.js';
-import {bold, row, type Row, s, wrapRow, wrapWords} from '../text.js';
-import {G, GRID} from '../tokens.js';
+import type {Row} from '../text.js';
 import {type AgentSession, type Answer, type Backend, LABELS, type SessionOptions} from './backend.js';
+import {type Desk, NO_DESK} from './desk.js';
 import type {AgentEvent} from './events.js';
-import {agentRows} from './markdown.js';
-import {askContent, displayName, landed, toolArgs} from './present.js';
+import {type AgentLook, RULE, type Status, tilde} from './looks.js';
+import {displayName} from './present.js';
 
 export type Opener = (o: SessionOptions) => Promise<AgentSession>;
 
 const COMMANDS: [string, string][] = [
 	['/status', 'Agent, model, session and cost'],
 	['/model', 'Switch model: /model <name>'],
+	['/last', 'Full output of the last tool call'],
 	['/clear', 'Start a new conversation'],
 	['/help', 'List commands'],
 	['/exit', 'Leave'],
 ];
 
-const KEYS: [string, string][] = [
-	['/', 'commands; ↑↓ move, tab completes'],
-	['enter', 'send; while a turn runs, it queues'],
-	['esc', 'interrupt the turn; clear the box'],
-	['ctrl-o', 'open the last fold (thinking or tool output)'],
-	['ctrl-d', 'leave (on an empty box)'],
-];
-
 /** Silence longer than this, outside an approval, interrupts the turn (as ds-next does). */
 export const IDLE_MS = 10 * 60 * 1000;
 
-const VERBS: Record<string, string> = {Read: 'Reading', Grep: 'Searching', Glob: 'Searching', Bash: 'Running', Edit: 'Editing', Write: 'Writing', WebFetch: 'Fetching', WebSearch: 'Searching'};
-
-const tilde = (p: string) => (p.startsWith(homedir()) ? '~' + p.slice(homedir().length) : p);
-
-/** An outcome that wraps instead of running off the edge; continuation lines sit at col 3. */
-const outcome = (kind: 'ok' | 'warn' | 'err', subject: string, detail: string, w: number): Row[] =>
-	wrapRow(b.outcome(kind, subject, detail), w).map((r, i) => (i ? row('  ', r) : r));
-
 type Pending = {name: string; input: Record<string, unknown>};
 type Ask = {name: string; input: Record<string, unknown>; resolve: (a: Answer) => void};
-/** What was printed last, for the rhythm: a blank between messages, none between tools. */
+/** What was printed last, for Rule's rhythm: a blank between messages, none between tools. */
 type Last = 'none' | 'text' | 'tool' | 'thought' | 'rule';
 
-export function AgentApp({backend, open, cwd, width, model: initialModel, connection, effort}: {
+export function AgentApp({backend, open, cwd, width, model: initialModel, connection, effort, look = RULE, desk = NO_DESK, label: name}: {
 	backend: Backend;
 	open: Opener;
 	cwd: string;
@@ -57,19 +40,25 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 	model?: string;
 	connection?: string;
 	effort?: string;
+	look?: AgentLook;
+	desk?: Desk;
+	/** What the agent is called on screen; the backend's name unless given (the demo's scripted agent). */
+	label?: string;
 }) {
 	const {exit} = useApp();
-	const w = Math.max(GRID.minWidth, width);
-	const label = LABELS[backend];
+	const cols = Math.max(40, width); // the box and the toolbar
+	const w = look.width(width); // everything else
+	const label = name ?? LABELS[backend];
 	const {log, printRows} = useTranscript();
 
-	const [mode, setMode] = useState<'idle' | 'turn' | 'ask'>('idle');
+	const [mode, setModeState] = useState<'idle' | 'turn' | 'ask'>('idle');
 	const [pending, setPending] = useState<Map<string, Pending>>(new Map());
-	const [verb, setVerb] = useState('Drafting');
+	const [step, setStep] = useState('');
 	const [ask, setAsk] = useState<Ask | null>(null);
 	const [queue, setQueue] = useState<string[]>([]);
 	const [model, setModel] = useState(initialModel ?? '');
 	const [turnStart, setTurnStart] = useState(Date.now());
+	const [where, setWhere] = useState(() => desk.where());
 
 	const session = useRef<AgentSession | null>(null);
 	const sessionId = useRef<string | undefined>(undefined);
@@ -77,27 +66,60 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 	const interrupted = useRef(false);
 	const last = useRef<Last>('none');
 	const lastEvent = useRef(Date.now());
+	const lastCtrlC = useRef(0);
 	const fold = useRef<Row[]>([]);
-	const pendingRef = useRef(pending);
+	const lastOutput = useRef('');
+	const pendingRef = useRef(pending); // written as events arrive, so a result can follow its call in the same tick
+	const askChain = useRef<Promise<unknown>>(Promise.resolve());
 	const modeRef = useRef(mode);
-	const stats = useRef({turns: 0, tools: 0, turnTools: 0, cost: 0});
-	pendingRef.current = pending;
-	modeRef.current = mode;
+	const stats = useRef({lines: 0, turns: 0, tools: 0, turnTools: 0, cost: 0});
+	/** Mode for the keys and the session's callbacks, current before the next render is. */
+	const setMode = (m: 'idle' | 'turn' | 'ask') => {
+		modeRef.current = m;
+		setModeState(m);
+	};
 
-	/** Print with the spec's rhythm. */
+	const status = (): Status => ({
+		label,
+		cwd,
+		model,
+		effort,
+		cost: stats.current.cost,
+		lines: stats.current.lines,
+		turns: stats.current.turns,
+		queued: queue.length,
+		connected: session.current !== null,
+		mode,
+		where,
+		desk,
+	});
+
+	/** Print with the look's rhythm. */
 	const emit = useCallback(
 		(kind: Last, rows: Row[]) => {
-			const tight = (kind === 'tool' && last.current === 'tool') || (kind === 'text' && last.current === 'thought') || last.current === 'rule' || last.current === 'none';
+			const tight = !look.spaced || (kind === 'tool' && last.current === 'tool') || (kind === 'text' && last.current === 'thought') || last.current === 'rule' || last.current === 'none';
 			printRows(tight ? rows : [[], ...rows]);
 			last.current = kind;
 		},
-		[printRows],
+		[look, printRows],
 	);
 
+	const block = useCallback((rows: Row[]) => printRows(look.block(rows)), [look, printRows]);
+
+	const setPendingNow = (m: Map<string, Pending>) => {
+		pendingRef.current = m;
+		setPending(m);
+	};
+
 	const endTurn = useCallback(() => {
-		setPending(new Map());
+		setPendingNow(new Map());
 		setMode('idle');
 	}, []);
+
+	const nextStep = (e: Parameters<AgentLook['step']>[0]) => {
+		const v = look.step(e);
+		if (v !== undefined) setStep(v);
+	};
 
 	const onEvent = useCallback(
 		(e: AgentEvent) => {
@@ -108,64 +130,76 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 				case 'init':
 					sessionId.current = e.sessionId || sessionId.current;
 					if (e.model) setModel(e.model);
+					nextStep({kind: 'thinking'}); // connected: Rail stops saying "Connecting to"
 					return;
-				case 'thinking':
-					fold.current = wrapWords(e.text, w - GRID.indent).map((l, i) => b.thinking(l, i === 0));
-					emit('thought', [b.thought(since)]);
+				case 'thinking': {
+					const t = look.thinking(e.text, since, w);
+					if (t.fold) fold.current = t.fold;
+					if (t.rows.length) emit('thought', t.rows);
+					nextStep({kind: 'thinking'});
 					return;
+				}
 				case 'text':
-					emit('text', agentRows(e.text, w));
+					emit('text', look.text(e.text, w));
 					return;
-				case 'tool':
+				case 'tool': {
 					stats.current.tools++;
 					stats.current.turnTools++;
-					setVerb(VERBS[displayName(e.name)] ?? b.verb());
-					setPending(p => new Map(p).set(e.id, {name: e.name, input: e.input}));
+					nextStep({kind: 'tool', name: e.name});
+					setPendingNow(new Map(pendingRef.current).set(e.id, {name: e.name, input: e.input}));
+					const rows = look.toolStart(e.name, e.input, cwd, w);
+					if (rows.length) emit('tool', rows);
 					return;
+				}
 				case 'toolResult': {
 					const p = pendingRef.current.get(e.id);
 					if (!p) return;
-					setPending(m => {
-						const n = new Map(m);
-						n.delete(e.id);
-						return n;
-					});
-					const rows = landed(p.name, p.input, cwd, e.text, e.isError);
-					if (rows.length > 2 || e.isError) fold.current = e.text.split('\n').map(l => [s('    ' + l, 'dim')]);
-					emit('tool', rows); // the ▪ lands where the ▫ was
+					const m = new Map(pendingRef.current);
+					m.delete(e.id);
+					setPendingNow(m);
+					lastOutput.current = e.text;
+					fold.current = look.output(e.text);
+					emit('tool', look.toolEnd(p.name, p.input, cwd, e.text, e.isError, w));
+					nextStep({kind: 'toolResult'});
 					return;
 				}
 				case 'result': {
 					if (e.costUsd) stats.current.cost += e.costUsd;
-					const facts = [`${stats.current.turnTools} tools`, `${(e.durationMs / 1000).toFixed(1)}s`];
-					if (e.costUsd !== undefined) facts.push(`$${e.costUsd.toFixed(4)}`);
-					const rows: Row[] = [b.facts(...facts)];
-					if (!e.ok && !interrupted.current) rows.unshift(...outcome('err', 'turn failed', e.errors[0] ?? 'the agent reported an error', w));
-					printRows([[], ...rows, []]);
+					const failure = !e.ok && !interrupted.current ? e.errors.join('; ') || 'the agent reported an error' : undefined;
+					printRows(look.ending({n: stats.current.turns, tools: stats.current.turnTools, durationMs: e.durationMs, costUsd: e.costUsd, failure}, w));
 					last.current = 'none';
 					endTurn();
 					return;
 				}
 				case 'note':
-					printRows([b.facts(e.text)]);
+					printRows(look.note(e.text));
 					return;
 				case 'error':
-					printRows([[], ...outcome('err', label, e.message, w), []]);
+					block(look.failure(label, e.message, w));
 					last.current = 'none';
 					endTurn();
 					return;
 			}
 		},
-		[cwd, emit, endTurn, label, printRows, w],
+		[block, cwd, emit, endTurn, label, look, printRows, w],
 	);
 
+	/** One question at a time: an agent can ask about parallel calls at once, and two prompts on one
+	 *  terminal would send an answer to the wrong one. */
 	const askPerson = useCallback(
-		(name: string, input: Record<string, unknown>) =>
-			new Promise<Answer>(resolve => {
-				setAsk({name, input, resolve});
-				setMode('ask');
-			}),
-		[],
+		(name: string, input: Record<string, unknown>) => {
+			const answered = askChain.current.then(
+				() =>
+					new Promise<Answer>(resolve => {
+						printRows(look.asking(name, input, w));
+						setAsk({name, input, resolve});
+						setMode('ask');
+					}),
+			);
+			askChain.current = answered.catch(() => undefined);
+			return answered;
+		},
+		[look, printRows, w],
 	);
 
 	const ensureSession = useCallback(async (): Promise<AgentSession | null> => {
@@ -187,17 +221,17 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 						return;
 					}
 					if (modeRef.current !== 'idle') {
-						printRows([[], ...outcome('err', label, 'stopped; ask again to continue the same session', w), []]);
+						block(look.failure(label, 'stopped; ask again to continue the same session', w));
 						endTurn();
 					}
 				},
 			});
 			return session.current;
 		} catch (err) {
-			printRows([[], ...outcome('err', label, (err as Error).message, w), []]);
+			block(look.failure(label, (err as Error).message, w));
 			return null;
 		}
-	}, [askPerson, backend, connection, cwd, effort, endTurn, label, model, onEvent, open, printRows]);
+	}, [askPerson, backend, block, connection, cwd, effort, endTurn, label, look, model, onEvent, open, w]);
 
 	const closeSession = () => {
 		if (!session.current) return;
@@ -206,54 +240,61 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 		session.current = null;
 	};
 
+	const leave = () => {
+		closeSession();
+		exit();
+	};
+
 	useEffect(() => {
-		printRows([
-			...b.banner('0.1.0', [['agent', label], ['cwd', tilde(cwd)], ['model', model || 'default'], ['session', 'new']], ['/help lists commands', 'ctrl-o opens a fold', 'ctrl-d leaves'], 'projects from the canon'),
-			[],
-		]);
+		printRows(look.banner(status(), cols));
 		return () => session.current?.close();
 	}, []);
 
+	// The toolbar's "where": this repo against the canon, read again whenever the box comes back.
+	useEffect(() => {
+		if (mode === 'idle') setWhere(desk.where());
+	}, [mode]);
+
 	const run = async (line: string) => {
 		if (!line) return;
-		if (line === '/exit' || line === '/quit') {
-			closeSession();
-			return exit();
-		}
-		const n = ++stats.current.turns;
-		printRows([b.turnRule(n, w), b.you(line)]);
+		if (line === '/exit' || line === '/quit') return leave();
+		stats.current.lines++;
+		printRows(look.accepted(line, status(), cols, w));
 		last.current = 'rule';
-		if (line === '?') return printRows([[], ...KEYS.map(([k, v]) => row('  ', s(k.padEnd(10), 'dim'), s(v, 'muted'))), []]);
-		if (line === '/help') return printRows([[], ...b.popupRows(COMMANDS, -1), []]);
+		if (line === '?') return block(look.keys());
+		if (line === '/help') return block(look.help(COMMANDS, label));
 		if (line === '/status') {
-			return printRows([
-				[],
-				b.labelled('agent', label),
-				b.labelled('model', model || 'default'),
-				b.labelled('session', sessionId.current ?? 'not started'),
-				b.labelled('cwd', tilde(cwd)),
-				b.labelled('turns', `${n - 1}  ${stats.current.tools} tools${stats.current.cost ? `  $${stats.current.cost.toFixed(4)}` : ''}`),
-				[],
+			const s = stats.current;
+			return block([
+				look.labelled('agent', label),
+				look.labelled('model', model || 'default'),
+				...(effort ? [look.labelled('effort', effort)] : []),
+				look.labelled('session', sessionId.current ?? 'not started'),
+				look.labelled('cwd', tilde(cwd)),
+				look.labelled('turns', [String(s.turns), `${s.tools} tools`, ...(s.cost ? [`$${s.cost.toFixed(4)}`] : [])].join(look.sep)),
 			]);
 		}
+		if (line === '/last') return block(lastOutput.current ? look.output(lastOutput.current) : look.hint('no tool output yet'));
 		if (line === '/clear') {
 			closeSession();
 			sessionId.current = undefined;
-			return printRows([[], ...outcome('ok', 'new conversation', 'the next message starts a fresh session', w), []]);
+			stats.current.turns = 0;
+			return block(look.outcome('ok', 'new conversation', 'the next message starts a fresh session', w));
 		}
 		if (line.startsWith('/model')) {
 			const name = line.slice('/model'.length).trim();
-			if (!name) return printRows([[], ...outcome('warn', 'model', `${model || 'default'} now; /model <name> switches`, w), []]);
+			if (!name) return block(look.outcome('warn', 'model', `${model || 'default'} now; /model <name> switches`, w));
 			setModel(name);
 			await session.current?.setModel(name).catch(() => undefined);
-			return printRows([[], ...outcome('ok', 'model', name, w), []]);
+			return block(look.outcome('ok', 'model', name, w));
 		}
 		// Anything else, unknown /commands included, goes to the agent: its own commands still work.
+		printRows(look.turnStart(++stats.current.turns));
 		stats.current.turnTools = 0;
 		interrupted.current = false;
 		lastEvent.current = Date.now();
 		setTurnStart(Date.now());
-		setVerb('Drafting');
+		nextStep({kind: 'start', connected: session.current !== null, label});
 		setMode('turn');
 		const ses = await ensureSession();
 		if (!ses) return setMode('idle');
@@ -263,22 +304,33 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 	const editor = useLineEditor({
 		active: mode !== 'ask',
 		commands: COMMANDS,
-		onSubmit: line => (mode === 'idle' ? void run(line) : line && setQueue(q => [...q, line])),
-		onExit: () => {
-			closeSession();
-			exit();
-		},
+		onSubmit: line => (modeRef.current === 'idle' ? void run(line) : line && setQueue(q => [...q, line])),
+		onExit: leave,
 	});
 
-	// esc interrupts a turn; ctrl-o opens the last fold.
+	const interrupt = () => {
+		if (modeRef.current !== 'turn' || !session.current) return;
+		interrupted.current = true;
+		printRows(look.interrupted(Math.floor((Date.now() - turnStart) / 1000), w));
+		last.current = 'none';
+		void session.current.interrupt().catch(() => undefined);
+	};
+
+	// esc interrupts a turn; ctrl-o opens the last fold; ctrl-c is the look's (Rail: ds-next's habit,
+	// one interrupts or clears the line, a second within two seconds leaves).
 	useInput(
 		(input, key) => {
-			if (key.escape && mode === 'turn' && session.current) {
-				interrupted.current = true;
-				printRows([[], ...outcome('warn', 'interrupted', 'tell the agent what to do instead', w), []]);
-				last.current = 'none';
-				void session.current.interrupt().catch(() => undefined);
+			if (key.ctrl && input === 'c') {
+				if (look.ctrlC === 'exit') return leave();
+				if (modeRef.current === 'turn') return interrupt();
+				const now = Date.now();
+				if (now - lastCtrlC.current < 2000) return leave();
+				lastCtrlC.current = now;
+				editor.clear();
+				printRows(look.hint('ctrl-c again to leave · or /exit'));
+				return;
 			}
+			if (key.escape && modeRef.current === 'turn') interrupt();
 			if (key.ctrl && input === 'o' && fold.current.length) printRows([...fold.current, []]);
 		},
 		{isActive: mode !== 'ask'},
@@ -298,7 +350,7 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 		if (mode !== 'turn') return;
 		const t = setInterval(() => {
 			if (Date.now() - lastEvent.current > IDLE_MS && session.current) {
-				printRows([[], ...outcome('warn', `no word from ${label} for ${IDLE_MS / 60000} min`, 'interrupted; ask again to continue', w), []]);
+				block(look.outcome('warn', `no word from ${label} for ${IDLE_MS / 60000} min`, 'interrupted; ask again to continue', w));
 				void session.current.interrupt().catch(() => undefined);
 				closeSession(); // the next message resumes the same session
 				endTurn();
@@ -307,11 +359,9 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 		return () => clearInterval(t);
 	}, [mode]);
 
-	const answer = (i: number) => {
+	const answer = (a: Answer, typed: string) => {
 		if (!ask) return;
-		const a: Answer = i === 0 ? 'yes' : i === 1 ? 'always' : 'no';
-		const what = displayName(ask.name);
-		printRows([row(s(G.prompt, 'accentText'), ' ', bold(a === 'no' ? 'No' : a === 'always' ? `Yes, and don't ask again for ${what}` : 'Yes'))]);
+		printRows(look.answered(a, typed, displayName(ask.name)));
 		last.current = 'tool';
 		lastEvent.current = Date.now(); // the watchdog does not count time spent deciding
 		if (a === 'no') interrupted.current = true; // a decline ends the turn; that is not a failure
@@ -320,43 +370,28 @@ export function AgentApp({backend, open, cwd, width, model: initialModel, connec
 		setMode('turn');
 	};
 
-	const right = [model || label, tilde(cwd), stats.current.cost ? `$${stats.current.cost.toFixed(4)}` : `${stats.current.turns} turns`].join(' · ');
-	const running: Row[] = [...pending.values()].map(p => b.tool(displayName(p.name), toolArgs(p.name, p.input, cwd), 'running'));
-	const asking = ask ? askContent(ask.name, ask.input, cwd, w) : null;
+	const st = status();
+	const running = [...pending.values()].map(p => look.toolRunning(p.name, p.input, cwd)).filter((x): x is Row => x !== null);
+	const gap = look.spaced ? 1 : 0;
 
 	return (
 		<>
 			<Transcript log={log} />
 			{mode !== 'idle' && running.length > 0 && <Lines rows={[[], ...running]} />}
 			{mode === 'turn' && (
-				<Box flexDirection="column" marginTop={1}>
-					<Working verb={verb} since={turnStart} />
+				<Box flexDirection="column" marginTop={gap}>
+					<Working verb={step} since={turnStart} spinner={look.spinner} draw={look.working} />
 				</Box>
 			)}
-			{mode === 'ask' && ask && asking ? (
-				<Box flexDirection="column" marginTop={1}>
-					<DialogPicker
-						key={ask.name + JSON.stringify(ask.input)}
-						title={asking.title}
-						body={asking.body}
-						options={['Yes', `Yes, and don't ask again for ${displayName(ask.name)} this session`, row('No, and tell the agent what to do differently', '  ', s('esc', 'dim'))]}
-						onAnswer={answer}
-						w={w}
-					/>
-					<StatusRow left="enter chooses  1-3 answer  esc declines" right={right} w={w} />
+			{mode === 'ask' && ask ? (
+				<Box flexDirection="column" marginTop={gap}>
+					<look.Approval key={ask.name + JSON.stringify(ask.input)} name={ask.name} input={ask.input} cwd={cwd} w={w} status={st} onAnswer={answer} />
 				</Box>
 			) : (
-				<Box marginTop={1}>
-					<Footing
-						editor={editor}
-						w={w}
-						hint={mode === 'turn' ? 'queue a message  it sends after this turn' : `ask ${label} anything  / for commands  ? for keys`}
-						left={mode === 'turn' ? `esc interrupts${queue.length ? `  ${queue.length} queued` : ''}` : '? shortcuts'}
-						right={right}
-					/>
+				<Box flexDirection="column" marginTop={mode === 'turn' ? 1 - gap : 0}>
+					<Lines rows={look.footing(editor, st, cols, w)} />
 				</Box>
 			)}
 		</>
 	);
 }
-

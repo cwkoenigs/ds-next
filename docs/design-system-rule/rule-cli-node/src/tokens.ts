@@ -1,9 +1,15 @@
 // Rule tokens: the values in ../tokens.json, typed. Colour roles come from the Modernist ramps.
+import type {RailRole} from './rail/tokens.js';
 
-export type Role = 'text' | 'muted' | 'dim' | 'rule' | 'accent' | 'accentText' | 'surface' | 'bg';
+export type RuleRole = 'text' | 'muted' | 'dim' | 'rule' | 'accent' | 'accentText' | 'surface' | 'bg';
+/** A span's role in either look; each look's palette colours its own (src/rail/tokens.ts for Rail). */
+export type Role = RuleRole | RailRole;
 export type ThemeName = 'dark' | 'light';
+/** Rule (this design system) or Rail (ds-next's blue one, with the dog and the cat). */
+export type LookName = 'rule' | 'rail';
+export const LOOKS: readonly LookName[] = ['rule', 'rail'];
 
-export const PALETTE: Record<ThemeName, Record<Role, string>> = {
+export const PALETTE: Record<ThemeName, Record<RuleRole, string>> = {
 	dark: {
 		bg: '#201e1d', // Modernist text
 		surface: '#2d2b2b', // neutral-900
@@ -27,7 +33,7 @@ export const PALETTE: Record<ThemeName, Record<Role, string>> = {
 };
 
 /** ANSI-16 fallback: chalk colour names. Accent and accent text are both red; bold tells them apart. */
-export const ANSI16: Record<Role, string | undefined> = {
+export const ANSI16: Record<RuleRole, string | undefined> = {
 	bg: undefined,
 	text: undefined,
 	muted: 'gray',
@@ -39,7 +45,7 @@ export const ANSI16: Record<Role, string | undefined> = {
 };
 
 /** Roles that are always bold. */
-export const BOLD_ROLES = new Set<Role>(['accentText']);
+export const BOLD_ROLES = new Set<RuleRole>(['accentText']);
 
 export const G = {
 	prompt: '›',
@@ -104,4 +110,4 @@ export const MASCOT = [
 	'.RR.RR...RR.RR....RR.RR.RR..',
 ] as const;
 
-export const MASCOT_INKS: Record<string, Role> = {I: 'text', R: 'accent'};
+export const MASCOT_INKS: Record<string, RuleRole> = {I: 'text', R: 'accent'};

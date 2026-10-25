@@ -2,9 +2,10 @@
 // mockups shown in dark and light. Laid out at the 80-column design width.
 import {Box, Text} from 'ink';
 import {isValidElement, type ReactNode} from 'react';
-import {Mock} from '../components/Lines.js';
+import {Lines, Mock} from '../components/Lines.js';
+import {band} from '../rail/builders.js';
 import {colour, useTheme} from '../theme.js';
-import {type Row, wrapWords} from '../text.js';
+import {bold, row, type Row, s, wrapWords} from '../text.js';
 import {G, GRID, type Role, type ThemeName} from '../tokens.js';
 
 const W = GRID.designWidth;
@@ -22,10 +23,21 @@ export function R({role, bold, children}: {role?: Role; bold?: boolean; children
 	);
 }
 
-export const Rule = ({role = 'rule'}: {role?: Role}) => <R role={role}>{G.h.repeat(W)}</R>;
+/** A full-width rule: heavy in Rule, light in Rail. */
+export function Rule({role = 'rule'}: {role?: Role}) {
+	return <R role={role}>{(useTheme().look === 'rail' ? '─' : G.h).repeat(W)}</R>;
+}
 
-/** Ink chip with the chapter number, uppercase name, heavy rule under it. */
+/** Ink chip with the chapter number, uppercase name, heavy rule under it. In Rail: the number on
+ *  the brand band, the name as written, a light rule. */
 export function Header({n, title}: {n: number; title: string}) {
+	if (useTheme().look === 'rail') {
+		return (
+			<Box flexDirection="column" marginTop={1}>
+				<Lines rows={[row(band(` ${n} `), '  ', bold(title, 'strong')), [s('─'.repeat(W), 'rule')]]} />
+			</Box>
+		);
+	}
 	return (
 		<Box flexDirection="column" marginTop={1}>
 			<Text>

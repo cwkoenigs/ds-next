@@ -1,63 +1,14 @@
 import {render} from 'ink-testing-library';
 import {describe, expect, it} from 'vitest';
 import {AgentApp, type Opener} from '../src/agent/AgentApp.js';
-import {type AgentSession, type Answer, chooseBackend, dsServer, load, openSession, permissionGate, ruleSpec, type SessionOptions} from '../src/agent/backend.js';
+import {chooseBackend, dsServer, load, openSession, permissionGate, ruleSpec} from '../src/agent/backend.js';
 import {normalize} from '../src/agent/events.js';
 import {agentRows} from '../src/agent/markdown.js';
 import {displayName, resultSummary, toolArgs} from '../src/agent/present.js';
 import {Canon, Skills} from '../src/ds/kb.js';
 import {tools as dsTools} from '../src/ds/tools.js';
 import {plain, width} from '../src/text.js';
-
-const tick = (ms = 20) => new Promise(r => setTimeout(r, ms));
-const ENTER = '\r';
-
-// Waits end as soon as the frame matches; the ceiling only matters on a loaded machine.
-async function until(frame: () => string | undefined, test: (f: string) => boolean, ms = 10_000) {
-	const end = Date.now() + ms;
-	while (Date.now() < end) {
-		if (test(frame() ?? '')) return frame() ?? '';
-		await tick();
-	}
-	throw new Error(`timed out; last frame:\n${frame()}`);
-}
-
-/** A scripted agent: each message runs one turn with a Bash call that needs approval. */
-function fake() {
-	const log = {sent: [] as string[], answers: [] as Answer[], interrupts: 0};
-	let n = 0;
-	const open: Opener = async (o: SessionOptions): Promise<AgentSession> => {
-		o.onEvent({kind: 'init', model: 'test-model', sessionId: 'sess-1'});
-		return {
-			send(text) {
-				log.sent.push(text);
-				const id = `t${++n}`;
-				void (async () => {
-					await tick();
-					o.onEvent({kind: 'thinking', text: 'The user wants the tests run.'});
-					o.onEvent({kind: 'text', text: "I'll run the **tests** with `uv run pytest`."});
-					o.onEvent({kind: 'tool', id, name: 'Bash', input: {command: 'uv run pytest -q', description: 'Run the tests'}});
-					const a = await o.ask('Bash', {command: 'uv run pytest -q', description: 'Run the tests'});
-					log.answers.push(a);
-					if (a === 'no') {
-						o.onEvent({kind: 'toolResult', id, text: 'The person declined this.', isError: true});
-						o.onEvent({kind: 'result', ok: false, durationMs: 900, errors: ['interrupted']});
-						return;
-					}
-					o.onEvent({kind: 'toolResult', id, text: '13 passed in 1.42s\nline 2\nline 3', isError: false});
-					o.onEvent({kind: 'text', text: '## Done\nThe tests pass.'});
-					o.onEvent({kind: 'result', ok: true, durationMs: 15200, costUsd: 0.0041, errors: []});
-				})();
-			},
-			async interrupt() {
-				log.interrupts++;
-			},
-			async setModel() {},
-			close() {},
-		};
-	};
-	return {open, log};
-}
+import {ENTER, fake, ready, tick, until} from './helpers.js';
 
 const app = (open: Opener) => render(<AgentApp backend="cortex" open={open} cwd="/work/order-metrics" width={80} />);
 
@@ -65,7 +16,7 @@ describe('rule agent', () => {
 	it('plays a turn into the transcript and asks before running a command', async () => {
 		const {open, log} = fake();
 		const a = app(open);
-		await tick();
+		await ready(a);
 		a.stdin.write('run the tests');
 		await tick();
 		a.stdin.write(ENTER);
@@ -84,10 +35,25 @@ describe('rule agent', () => {
 		a.unmount();
 	});
 
+	it('sends the whole line when enter follows the last key at once', async () => {
+		const {open, log} = fake();
+		const a = app(open);
+		await ready(a);
+		a.stdin.write('run the tests'); // no render between the two: enter must still see the line
+		a.stdin.write(ENTER);
+		await until(a.lastFrame, f => f.includes('BASH COMMAND'));
+		a.stdin.write('2');
+		a.stdin.write('\u001B[B'); // ↓ after a number is ignored; the answer was 2
+		await until(a.lastFrame, f => f.includes('1 tools'));
+		expect(log.sent).toEqual(['run the tests']);
+		expect(log.answers).toEqual(['always']);
+		a.unmount();
+	});
+
 	it('a decline ends the turn without reporting a failure', async () => {
 		const {open, log} = fake();
 		const a = app(open);
-		await tick();
+		await ready(a);
 		a.stdin.write('run the tests');
 		await tick();
 		a.stdin.write(ENTER);
@@ -104,7 +70,7 @@ describe('rule agent', () => {
 		const a = app(async () => {
 			throw new Error('Cortex Code SDK did not load. It needs Node 22.22 or newer.');
 		});
-		await tick();
+		await ready(a);
 		a.stdin.write('hello');
 		await tick();
 		a.stdin.write(ENTER);
@@ -117,7 +83,7 @@ describe('rule agent', () => {
 	it('answers its own commands without the agent', async () => {
 		const {open, log} = fake();
 		const a = app(open);
-		await tick();
+		await ready(a);
 		a.stdin.write('/status');
 		await tick();
 		a.stdin.write(ENTER);

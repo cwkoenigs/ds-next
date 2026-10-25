@@ -1,17 +1,20 @@
 // `rule html`: the tour as one self-contained web page, readable on a phone. Mockups are the same
-// rows the terminal draws, coloured from the palette; the prose comes from spec.ts.
+// rows the terminal draws, coloured from the palette; the prose comes from spec.ts. With --look rail,
+// a page of Rail's screens instead (buildRail).
 import * as S from './screens.js';
 import * as spec from './spec.js';
-import {makeTheme, resolve} from './theme.js';
+import {INKS, makeTheme, resolve} from './theme.js';
 import {fit, type Row} from './text.js';
-import {GRID, PALETTE, type ThemeName} from './tokens.js';
-import {PAGE} from './html-page.js';
+import {GRID, type LookName, type ThemeName} from './tokens.js';
+import {PAGE, RAIL_PAGE} from './html-page.js';
+import * as RT from './rail/tokens.js';
+import {SCREENS as RAIL_SCREENS} from './rail/screens.js';
 import {landedTurn} from './tour/chapters.js';
 
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-function rowHtml(r: Row, name: ThemeName): string {
-	const theme = makeTheme(name, 'hex', true);
+function rowHtml(r: Row, name: ThemeName, look: LookName): string {
+	const theme = makeTheme(name, 'hex', true, look);
 	return fit(r, GRID.designWidth)
 		.map(sp => {
 			let {color, backgroundColor, bold, inverse} = resolve(theme, sp);
@@ -22,14 +25,14 @@ function rowHtml(r: Row, name: ThemeName): string {
 		.join('');
 }
 
-function mock(rows: Row[], name: ThemeName): string {
-	const {bg, text} = PALETTE[name];
-	return `<pre class="term" data-t="${name}" style="background:${bg};color:${text}">${rows.map(r => rowHtml(r, name)).join('\n')}</pre>`;
+function mock(rows: Row[], name: ThemeName, look: LookName): string {
+	const {bg, text} = INKS[look].palette[name];
+	return `<pre class="term" data-t="${name}" style="background:${bg};color:${text}">${rows.map(r => rowHtml(r, name, look)).join('\n')}</pre>`;
 }
 
-function mocks(rows: () => Row[], caption = ''): string {
+function mocks(rows: () => Row[], caption = '', look: LookName = 'rule'): string {
 	const cap = caption ? `<p class="cap">${esc(caption)}</p>` : '';
-	return `<figure class="mock">${cap}<div class="scroll">${mock(rows(), 'dark')}${mock(rows(), 'light')}</div></figure>`;
+	return `<figure class="mock">${cap}<div class="scroll">${mock(rows(), 'dark', look)}${mock(rows(), 'light', look)}</div></figure>`;
 }
 
 const p = (t: string, cls = '') => (cls ? `<p class="${cls}">${esc(t)}</p>` : `<p>${esc(t)}</p>`);
@@ -86,4 +89,45 @@ export function build(): string {
 		.replace('{{BODY}}', () => body)
 		.replace('{{VERSION}}', () => spec.VERSION)
 		.replace('%VERBS%', () => JSON.stringify(spec.VERBS));
+}
+
+/** What each Rail role is for: ds-next's ui_style.py and the tokens' semantic block. */
+const RAIL_USES: [RT.RailRole, string][] = [
+	['text', 'body text; what you typed'],
+	['muted', "a tool's argument, details, the banner's edge, the spinner's step"],
+	['dim', 'results, hints, the footer facts, the edge of an input frame'],
+	['rule', 'the rail │ and ╰, the prompt box'],
+	['accent', "the agent's voice ●, the spinner, the banner's labels"],
+	['strong', 'your voice ›, the word-mark, the cat'],
+	['brand', 'the session tag band, the dog'],
+	['ok', '✓ only'],
+	['warn', "⚠, and the edge of an approval frame"],
+	['err', '✗, and the line that explains it'],
+	['surface', 'the toolbar band, inline code'],
+	['hl', "the menu's current row"],
+];
+
+const RAIL_RULES = [
+	'Colour names a voice or an outcome, never decoration.',
+	'Only ✓ ⚠ ✗ use ok, warn and err, plus the line that explains them.',
+	'One filled band per screen: the prompt tag or the key to press.',
+	'A frame means "needs you": the prompt, an approval. Output is never boxed; the banner is the one shown-once exception.',
+	'One rail per turn; no blank lines inside a turn, one between turns.',
+];
+
+export function buildRail(): string {
+	const secs: [anchor: string, title: string, body: string][] = [];
+	const sw = (h: string) => `<span class="sw" style="background:${h}"></span><code>${h}</code>`;
+	RAIL_SCREENS.forEach(([title, note, rows], i) => secs.push([`screen-${i + 1}`, title, p(note) + mocks(rows, '', 'rail')]));
+	secs.push(['motion', 'Motion',
+		'<div class="live" aria-hidden="true"><span class="q">◐</span> <span class="v">Thinking</span> · <span class="s">0</span>s · ctrl-c interrupts</div>' +
+		p('One live line, redrawn in place: ◐◓◑◒ at 8 frames a second, the seconds once a second, the step when a new message arrives. Everything else is appended once and never redrawn.')]);
+	secs.push(['colour', 'Colour roles',
+		table(['Role', 'Dark', 'Light', 'ANSI-16', 'Used for'], RAIL_USES.map(([role, use]) => [role, sw(RT.PALETTE.dark[role]), sw(RT.PALETTE.light[role]), RT.ANSI16[role] ?? 'default', use]), new Set([1, 2])) +
+		'<ul class="rules">' + RAIL_RULES.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>']);
+	const toc = secs.map(([a, t], i) => `<a href="#${a}"><b>${i + 1}</b>${esc(t)}</a>`).join('');
+	const body = secs.map(([a, t, x], i) => `<section id="${a}"><h2><a class="chip" href="#${a}">${i + 1}</a>${esc(t)}</h2>${x}</section>`).join('');
+	return RAIL_PAGE.replace('{{TOC}}', () => toc)
+		.replace('{{BODY}}', () => body)
+		.replace('{{VERSION}}', () => spec.VERSION);
 }

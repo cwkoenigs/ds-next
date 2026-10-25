@@ -1,5 +1,5 @@
-// Agent text (Markdown) as Rule rows: ■ on the first line, col 3 after; headings uppercase and bold;
-// **bold** in bold; `code` on the surface; fenced code muted. No italics: Modernist doesn't slant.
+// Agent text (Markdown) as rows: headings bold (uppercase in Rule); **bold** in bold; `code` on the
+// surface; fenced code muted. No italics: neither look slants. The look adds ■ (Rule) or ● │ (Rail).
 import * as b from '../builders.js';
 import {bold, type Row, s, wrapRow} from '../text.js';
 import {GRID} from '../tokens.js';
@@ -17,8 +17,9 @@ function inline(line: string): Row {
 		);
 }
 
-export function agentRows(text: string, w: number): Row[] {
-	const width = w - GRID.indent;
+/** Agent Markdown as lines `width` wide, before a look puts its glyphs in front. Rule uppercases
+ *  headings and keeps `-` bullets; Rail keeps headings as written and bullets as Rich draws them, •. */
+export function markdownLines(text: string, width: number, {upper = true, bullet = '-'} = {}): Row[] {
 	const lines: Row[] = [];
 	let fenced = false;
 	for (const raw of text.replace(/\s+$/, '').split('\n')) {
@@ -32,7 +33,8 @@ export function agentRows(text: string, w: number): Row[] {
 		}
 		const h = /^#{1,6}\s+(.*)$/.exec(raw);
 		if (h) {
-			lines.push([bold(h[1]!.replace(/\*\*/g, '').toUpperCase())]);
+			const head = h[1]!.replace(/\*\*/g, '');
+			lines.push([bold(upper ? head.toUpperCase() : head)]);
 			continue;
 		}
 		if (!raw.trim()) {
@@ -42,7 +44,7 @@ export function agentRows(text: string, w: number): Row[] {
 		// List items keep their marker and wrap under their text.
 		const item = /^(\s*(?:[-*]|\d+[.)])\s+)(.*)$/.exec(raw);
 		if (item) {
-			const lead = item[1]!.replace(/^(\s*)[*]/, '$1-');
+			const lead = item[1]!.replace(/^(\s*)[-*]/, `$1${bullet}`);
 			const wrapped = wrapRow(inline(item[2]!), width - lead.length);
 			wrapped.forEach((r, i) => lines.push([s(i === 0 ? lead : ' '.repeat(lead.length)), ...r]));
 			continue;
@@ -50,5 +52,8 @@ export function agentRows(text: string, w: number): Row[] {
 		lines.push(...wrapRow(inline(raw), width));
 	}
 	while (lines.length && !lines[0]!.length) lines.shift();
-	return b.agent(lines, w);
+	return lines;
 }
+
+/** Agent text in Rule: ■ on the first line, col 3 after. */
+export const agentRows = (text: string, w: number): Row[] => b.agent(markdownLines(text, w - GRID.indent), w);

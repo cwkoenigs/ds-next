@@ -4,6 +4,7 @@ import {describe, expect, it} from 'vitest';
 import {Demo} from '../src/demo/Demo.js';
 import {CHAPTERS} from '../src/tour/chapters.js';
 import {ChapterView, Tour} from '../src/tour/Tour.js';
+import {ready} from './helpers.js';
 
 const tick = (ms = 30) => new Promise(r => setTimeout(r, ms));
 const ENTER = '\r';
@@ -22,7 +23,7 @@ async function until(frame: () => string | undefined, test: (f: string) => boole
 describe('the demo', () => {
 	it('types into a box that stays closed', async () => {
 		const app = render(<Demo width={80} fast />);
-		await tick();
+		await ready(app);
 		app.stdin.write('hello there');
 		const f = await until(app.lastFrame, f => f.includes('hello there'));
 		const line = f.split('\n').find(l => l.includes('› hello there'))!;
@@ -33,7 +34,7 @@ describe('the demo', () => {
 
 	it('opens the slash popup, moves with ↓ and runs the selection', async () => {
 		const app = render(<Demo width={80} fast />);
-		await tick();
+		await ready(app);
 		app.stdin.write('/s');
 		await until(app.lastFrame, f => f.includes('/standards') && f.includes('↑↓ move'));
 		app.stdin.write(DOWN);
@@ -45,7 +46,7 @@ describe('the demo', () => {
 
 	it('plays a turn, asks, and lands the answer', async () => {
 		const app = render(<Demo width={80} fast />);
-		await tick();
+		await ready(app);
 		app.stdin.write('add a --since flag');
 		await tick();
 		app.stdin.write(ENTER);
