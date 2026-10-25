@@ -8,7 +8,7 @@ It matches the Python `../rule-cli/`. The one difference is that the input box h
 
 ## Run it
 
-Needs Node 20 or newer. The commands are the same on Mac and Windows.
+Needs Node 22.22 or newer (the team runs 26). The commands are the same on Mac and Windows.
 
 ```sh
 npm install        # installs and builds
@@ -36,7 +36,7 @@ rule html --look rail      # Rail's screens as one web page (rail-screens.html),
 
 Options: `--theme dark|light` sets the theme for the prose and the demo. `--color truecolor|ansi16|none` forces the colour depth (otherwise it's whatever the terminal supports; 256-colour terminals like macOS Terminal get the palette downsampled). `--one-theme` shows each mockup only once. `--no-pause` prints the tour straight through, which also happens when the output is piped. To remove the command later: `npm rm -g rule-cli`.
 
-On Windows, use Windows Terminal. The old console window lacks the box-drawing characters and truecolor.
+npm 11 may warn that esbuild and fsevents have install scripts it hasn't run. Both belong to the test tools, not to `rule`, so there is nothing to approve. On Windows, use Windows Terminal. The old console window lacks the box-drawing characters and truecolor.
 
 ## In the demo
 
@@ -167,4 +167,4 @@ npm test           # 74 tests: every row fits 80 columns and every frame is exac
 npm run typecheck
 ```
 
-Dependencies are pinned to exact versions at least two weeks old, except `@snowflake/cortex-agent-sdk`, pinned at 0.0.2 (released 2026-10-13) because it is the version ds-next runs in Python. Ink 6.8 runs on Node 20; Ink 7 needs Node 22.
+Dependencies are pinned to exact versions, so every machine gets the same ones, and were all at their latest release on 2026-10-25 (`npm outdated` lists nothing, `npm audit` finds nothing). Ink 8, chalk 6 and vitest 5 need Node 22, and the Cortex SDK 22.22. `@snowflake/cortex-agent-sdk` is at 0.0.3, one release ahead of the Python package ds-next pins (`snowflake-cortex-agent-sdk==0.0.2`). Like 0.0.2, it hangs when its CLI is missing, so `rule agent` checks for the CLI first.

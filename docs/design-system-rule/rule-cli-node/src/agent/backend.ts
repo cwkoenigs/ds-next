@@ -196,8 +196,8 @@ export function dsServer(sdk: Sdk, tools: DsTool[] = []): unknown {
 	});
 }
 
-/** Cortex's SDK hangs, silently, when its CLI is missing (0.0.2 records the spawn error and never
- *  reports it), so look first, the way the SDK will: CORTEX_CODE_CLI_PATH, else `cortex` on PATH. */
+/** Cortex's SDK hangs, silently, when its CLI is missing (0.0.2 and 0.0.3 record the spawn error and never
+ *  report it), so look first, the way the SDK will: CORTEX_CODE_CLI_PATH, else `cortex` on PATH. */
 export function cortexCli(): string | undefined {
 	const set = process.env['CORTEX_CODE_CLI_PATH'];
 	if (set) return existsSync(set) ? set : undefined;
