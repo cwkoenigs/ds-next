@@ -4,6 +4,8 @@ import {render, renderToString} from 'ink';
 import {writeFileSync} from 'node:fs';
 import {parseArgs} from 'node:util';
 import type {ReactNode} from 'react';
+import {AgentApp} from './agent/AgentApp.js';
+import {chooseBackend, openSession} from './agent/backend.js';
 import {Demo} from './demo/Demo.js';
 import {build} from './html.js';
 import * as spec from './spec.js';
@@ -22,7 +24,8 @@ const HELP = `rule: the Rule terminal design system, walked through.
   rule screen [N]          print screen N (1-7), or all seven, in dark and light
   rule spec [--json]       the spec as text, or as data
   rule html [-o FILE]      the tour as one web page, for reading on a phone
-  rule demo                a live session drawn in Rule
+  rule demo                a live session drawn in Rule, with a faked agent
+  rule agent               a real session with Cortex Code or Claude Code, drawn in Rule
 
 Options
   --theme dark|light       theme for the prose and the demo (default: $DS_THEME, else dark)
@@ -31,6 +34,11 @@ Options
   --one-theme              show each mockup in --theme only, not dark and light
   --no-pause               print the tour straight through
   --from N                 start the tour at chapter N
+  --agent cortex|claude    which agent \`rule agent\` runs (default: $DS_AGENT, ~/.ds/config.toml,
+                           then whichever CLI is on PATH, Cortex first)
+  --model NAME             the model for \`rule agent\`
+  --connection NAME        the Snowflake connection for Cortex (default: the CLI's default)
+  --effort LEVEL           reasoning effort for \`rule agent\` (low, medium, high)
   -h, --help               this help
   -v, --version            the version`;
 
@@ -68,6 +76,10 @@ async function main(argv: string[]): Promise<number> {
 			chapter: {type: 'string', short: 'c'},
 			json: {type: 'boolean'},
 			out: {type: 'string', short: 'o'},
+			agent: {type: 'string'},
+			model: {type: 'string'},
+			connection: {type: 'string'},
+			effort: {type: 'string'},
 			help: {type: 'boolean', short: 'h'},
 			version: {type: 'boolean', short: 'v'},
 		},
@@ -131,6 +143,19 @@ async function main(argv: string[]): Promise<number> {
 			}
 			await live(theme, <Demo width={process.stdout.columns ?? GRID.designWidth} />);
 			return 0;
+		case 'agent': {
+			if (o.agent && o.agent !== 'cortex' && o.agent !== 'claude') throw new UsageError(`--agent must be cortex or claude, not "${o.agent}".`);
+			if (!interactive()) {
+				console.error('rule agent needs an interactive terminal: run it directly, not through a pipe.');
+				return 1;
+			}
+			const backend = chooseBackend(o.agent);
+			await live(
+				theme,
+				<AgentApp backend={backend} open={openSession} cwd={process.cwd()} width={process.stdout.columns ?? GRID.designWidth} model={o.model} connection={o.connection} effort={o.effort} />,
+			);
+			return 0;
+		}
 		default:
 			throw new UsageError(`unknown command "${cmd}".`);
 	}

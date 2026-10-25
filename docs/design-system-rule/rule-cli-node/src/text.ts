@@ -92,6 +92,37 @@ export function splitAt(r: Row, w: number): [Row, Row] {
 	return [head, tail];
 }
 
+/** Word-wrap a styled row to `w` cells, keeping each word's style. A span with a background (an
+ *  inline code chip) moves as one piece; a piece longer than `w` is cut. */
+export function wrapRow(r: Row, w: number): Row[] {
+	const tokens = r.flatMap(sp => (sp.bg ? [sp] : sp.text.split(/(\s+)/).filter(Boolean).map(t => ({...sp, text: t}))));
+	const out: Row[] = [];
+	let line: Row = [];
+	let used = 0;
+	let gap: Row = []; // the spaces since the last word, dropped at a break
+	for (const tok of tokens) {
+		if (!tok.bg && /^\s+$/.test(tok.text)) {
+			gap.push(tok);
+			continue;
+		}
+		const tw = stringWidth(tok.text);
+		const gw = line.length ? width(gap) : 0;
+		if (line.length && used + gw + tw > w) {
+			out.push(line);
+			line = [];
+			used = 0;
+		} else if (line.length) {
+			line.push(...gap);
+			used += gw;
+		}
+		line.push(...(tw > w ? truncate([tok], w) : [tok]));
+		used += Math.min(tw, w);
+		gap = [];
+	}
+	if (line.length || !out.length) out.push(line);
+	return out;
+}
+
 /** Word-wrap plain text to `w` cells. Spacing inside a line is kept (facts sit two spaces apart);
  *  the spaces at a break are dropped. */
 export function wrapWords(text: string, w: number): string[] {

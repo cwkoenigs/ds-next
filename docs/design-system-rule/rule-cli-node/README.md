@@ -21,7 +21,8 @@ rule screen 5              # one of the seven screens, dark and light
 rule screen                # all seven
 rule spec --json           # the spec as data
 rule html -o tour.html     # the tour as one web page, readable on a phone
-rule demo                  # a live session: type, / for commands, ? for keys, ctrl-d leaves
+rule demo                  # a live session with a faked agent: type, / for commands, ? for keys
+rule agent                 # a real session with Cortex Code or Claude Code (see below)
 ```
 
 Options: `--theme dark|light` sets the theme for the prose and the demo. `--color truecolor|ansi16|none` forces the colour depth (otherwise it's whatever the terminal supports; 256-colour terminals like macOS Terminal get the palette downsampled). `--one-theme` shows each mockup only once. `--no-pause` prints the tour straight through, which also happens when the output is piped. To remove the command later: `npm rm -g rule-cli`.
@@ -36,6 +37,30 @@ On Windows, use Windows Terminal. The old console window lacks the box-drawing c
 - **The approval dialog** replaces the box. Press `1`–`3`, or `↑↓` and `enter`; `esc` declines.
 - **`/status`, `/new`, `/standards`, `/skills`, `/scaffold`, `/help`, `?`** each print their screen.
 
+## A real agent: `rule agent`
+
+`rule agent` runs a real session with Cortex Code or Claude Code, drawn in Rule. It picks the agent the way ds-next does: `--agent cortex|claude`, then `DS_AGENT`, then `agent = "..."` in `~/.ds/config.toml`, then whichever CLI is on your PATH, Cortex first.
+
+```sh
+rule agent                          # whichever agent ds-next would use
+rule agent --agent cortex --connection my-conn
+rule agent --agent claude --model claude-sonnet-5-5
+```
+
+- **Cortex Code** needs the `cortex` CLI on your PATH (or `CORTEX_CODE_CLI_PATH`) and Node 22.22 or newer. It uses your Snowflake connection, as ds-next does.
+- **Claude Code** works with no CLI installed: the SDK carries its own. It uses your normal Claude Code login, and the session costs what a Claude Code session costs.
+- **What you see:**
+  - Thinking folds to `· Thought for 3s`.
+  - Each tool shows as ▫ while it runs, then lands as ▪ with its result as a fact (`142 lines`, `+14 −1`).
+  - Replies print as Rule Markdown: uppercase headings, code on the surface colour.
+  - Each turn ends with `N tools  12.3s  $0.0123` (Cortex reports no cost).
+- **Approvals:** anything that writes a file or runs a command opens the approval dialog. `1` yes, `2` don't ask again for that tool this session, `3` or `esc` declines and stops the turn so you can say what to do instead. The terminal's own read-only tool, `rule_spec` (the agent can read this design system), never asks.
+- **Keys:** `esc` interrupts a turn, `ctrl-o` opens the last fold, and messages typed mid-turn are queued.
+- **Commands:** `/status`, `/model <name>`, `/clear` (new conversation) and `/exit` are local; any other `/command` goes to the agent.
+- **Stalls:** a turn silent for 10 minutes, outside an approval, is interrupted, as in ds-next. The next message carries on the same session.
+
+What it doesn't have yet is ds-next's own tools (canon, scaffolds, code search, `scaffold_project`). Those are the next step: the `ds` server in `src/agent/backend.ts` is where they go, next to `rule_spec`.
+
 ## What's where
 
 | File | Holds |
@@ -46,7 +71,8 @@ On Windows, use Windows Terminal. The old console window lacks the box-drawing c
 | `src/builders.ts` | Every message type as rows: `turnRule`, `you`, `agent`, `tool`, `result`, `thinking`, `thought`, `outcome`, `facts`, `frame`, `dialog`, `inputBox`, `statusRow`, `popupRows`, `banner` |
 | `src/components/` | The design system as Ink components: static ones in `rule.tsx`, live ones in `live.tsx` (`Working`, `InputBox`, `Footing`, `DialogPicker`, `useLineEditor`), the write-once transcript, and `LiveTurn` |
 | `src/screens.ts` | The seven screens and the spec page's mockups |
-| `src/tour/`, `src/demo/` | The walkthrough and the live session |
+| `src/tour/`, `src/demo/` | The walkthrough and the faked live session |
+| `src/agent/` | `rule agent`: the backend choice and session (`backend.ts`), SDK messages reduced to a few events (`events.ts`), how tool calls read (`present.ts`), Markdown as rows (`markdown.ts`), and the app (`AgentApp.tsx`) |
 | `src/html.ts` | `rule html` |
 
 ## Using the components
@@ -67,9 +93,10 @@ Write the transcript once with `useTranscript()` and `<Transcript>`, built on In
 ## Checks
 
 ```sh
-npm test           # 24 tests: every row fits 80 columns and every frame is exactly 80, the box stays closed
-                   # while wrapping, the spec is complete, and the demo and tour driven by keystrokes
+npm test           # 38 tests: every row fits 80 columns and every frame is exactly 80, the box stays closed
+                   # while wrapping, the spec is complete, the demo, tour and agent session driven by
+                   # keystrokes (the agent scripted), the permission gate, and both SDKs load
 npm run typecheck
 ```
 
-Dependencies are pinned to exact versions at least two weeks old. Ink 6.8 runs on Node 20; Ink 7 needs Node 22.
+Dependencies are pinned to exact versions at least two weeks old, except `@snowflake/cortex-agent-sdk`, pinned at 0.0.2, the same version ds-next uses in Python (its versions are all newer than that). Ink 6.8 runs on Node 20; Ink 7 needs Node 22.
