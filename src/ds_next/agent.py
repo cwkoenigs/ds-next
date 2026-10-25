@@ -340,7 +340,7 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
                      f"(the so-capture skill does it), then run scripts/build_index.py.")
 
     return [canon_list, canon_read, skills_list, skill_read, project_status, scaffold_list, scaffold_get,
-            scaffold_project, block_list, block_get, block_add, code_search, code_get, code_add,
+            scaffold_project, adopt_repo, block_list, block_get, block_add, code_search, code_get, code_add,
             snowflake_search, capture]
 
 
