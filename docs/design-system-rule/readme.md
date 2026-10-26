@@ -32,7 +32,7 @@ A canoe in ink with a red paddle and red water, 28×20 px (`assets/mascot.txt`).
 - `gen/lib.js` — page generator
 - `pages/_ds/` — the Modernist stylesheet the pages load, so they open from disk
 - `chats/` — the Claude Design transcripts that produced Rail, Canopy and Rule
-- `rule-cli-node/` — the reference CLI in TypeScript + Ink: the same spec, tour, screens, demo and `html` command, built from Ink components a CLI can import. The input box stays closed while you type. `npm install && npm link`, then `rule`.
+- The reference CLI in TypeScript + Ink moved to its own repo, [cwkoenigs/rule-cli](https://github.com/cwkoenigs/rule-cli), with its history, on 2026-10-26. Besides the spec, tour, screens and demo it runs the ds-next agent terminal (`rule agent`) in Rule or Rail, with the canon's tools. Clone it, then `npm install && npm link` and `rule`.
 - `rule-cli/` — the same reference CLI in Python + Rich, kept until the Node version is confirmed on Mac and Windows: the whole spec as source (`rule_cli/spec.py`), a tour of every section, the seven screens in dark and light, a live demo session, and `rule-cli html` for reading the tour on a phone. Its `README.md` lists where it departs from `code/ui_style.py` (frame widths, combined styles, rows past 80 columns).
 
 ## Status
