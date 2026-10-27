@@ -1,6 +1,8 @@
-"""Code graph, LSP and Snowflake search wiring: offered only when installed, reads approved, edits asked."""
+"""Code tools and Snowflake search wiring: offered only when installed, every code tool a read."""
 import asyncio
 import subprocess
+
+import pytest
 
 from ds_next import agent, codetools
 
@@ -12,45 +14,32 @@ def fake_which(present):
 def test_nothing_offered_when_nothing_installed(monkeypatch, tmp_path):
     monkeypatch.setattr(codetools.shutil, "which", fake_which(set()))
     assert codetools.mcp_servers(tmp_path) == {} and codetools.read_only_ids({}) == set()
-    assert "not installed" in codetools.index(tmp_path)
-    assert "graph" not in agent.code_tools(tmp_path)
+    assert "`code` tools" not in agent.code_tools(tmp_path)
 
 
-def test_servers_and_approvals(monkeypatch, tmp_path, canon, skills):
-    monkeypatch.setattr(codetools.shutil, "which", fake_which({"codebase-memory-mcp", "serena"}))
-    servers = codetools.mcp_servers(tmp_path)
-    assert servers["graph"]["args"] == ["--tool-profile=analysis"]          # the read-only surface
-    assert str(tmp_path.resolve()) in servers["lsp"]["args"]
+@pytest.mark.parametrize("found, command, before", [
+    ("/bin/ds-code", "/bin/ds-code", []),
+    ("C:/npm/ds-code.CMD", "cmd", ["/c", "C:/npm/ds-code.CMD"]),      # npm's shim on Windows
+])
+def test_the_server_as_installed(monkeypatch, tmp_path, found, command, before):
+    monkeypatch.setattr(codetools.shutil, "which", lambda name: found if name == "ds-code" else None)
+    assert codetools.mcp_servers(tmp_path)["code"] == {"type": "stdio", "command": command,
+                                                       "args": [*before, "mcp", str(tmp_path.resolve())]}
+
+
+def test_its_tools_never_ask(monkeypatch, tmp_path, canon, skills):
+    monkeypatch.setattr(codetools.shutil, "which", fake_which({"ds-code"}))
     a = agent.Agent(tmp_path, ask_permission=lambda *x: asyncio.sleep(0, "asked"), canon=canon, skills=skills)
     opts = a.options()
-    assert set(opts.mcp_servers) == {"ds", "graph", "lsp"} and opts.allowed_tools == []
+    assert set(opts.mcp_servers) == {"ds", "code"} and opts.allowed_tools == []
 
     def permit(name):
         return asyncio.run(a._permit("MCP", {"resource": f"{name}\nInput: {{}}"}, None))
 
-    for read in ("mcp__graph__search_graph", "mcp__graph__trace_path", "mcp__lsp__find_referencing_symbols",
-                 "mcp__ds__snowflake_search"):
+    for read in [f"mcp__code__{t}" for t in codetools.CODE_TOOLS] + ["mcp__ds__snowflake_search"]:
         assert permit(read).behavior == "allow", read
-    for edit in ("mcp__lsp__rename_symbol", "mcp__lsp__replace_symbol_body", "mcp__lsp__write_memory",
-                 "mcp__lsp__safe_delete_symbol", "mcp__graph__index_repository"):
-        assert permit(edit) == "asked", edit
-    assert "find_referencing_symbols" in agent.code_tools(tmp_path)
-    assert codetools.graph_project(tmp_path) in agent.code_tools(tmp_path)
-
-
-def test_graph_project_name_matches_codebase_memory():
-    assert codetools.graph_project("/Users/x/Developer/ds-rebuild") == "Users-x-Developer-ds-rebuild"
-
-
-def test_index_summary_and_failures(monkeypatch, tmp_path):
-    monkeypatch.setattr(codetools.shutil, "which", fake_which({"codebase-memory-mcp"}))
-    assert "not a git repository" in codetools.index(tmp_path)
-    (tmp_path / ".git").mkdir()
-    out = '{"project": "p", "nodes": 345, "edges": 1113}'
-    monkeypatch.setattr(codetools.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, out, ""))
-    assert codetools.index(tmp_path) == "graph: 345 symbols, 1113 edges in p"
-    monkeypatch.setattr(codetools.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 1, "", "boom"))
-    assert "failed: boom" in codetools.index(tmp_path)
+    assert permit("mcp__code__write_file") == "asked"          # only the eight tools ds-code serves
+    assert "change_impact before finishing a change" in agent.code_tools(tmp_path)
 
 
 def test_snowflake_search(monkeypatch):
@@ -82,9 +71,6 @@ def test_connect_and_close_happen_in_the_callers_task(monkeypatch, tmp_path, can
             seen.append(("disconnect", asyncio.current_task()))
 
     monkeypatch.setattr(agent.sdk, "SDKClient", FakeClient)
-    monkeypatch.setattr(codetools.shutil, "which", fake_which({"codebase-memory-mcp"}))
-    monkeypatch.setattr(codetools, "index", lambda repo: "graph: indexed")
-    (tmp_path / ".git").mkdir()
     a = agent.Agent(tmp_path, canon=canon, skills=skills)
 
     async def go():
@@ -93,7 +79,7 @@ def test_connect_and_close_happen_in_the_callers_task(monkeypatch, tmp_path, can
         return asyncio.current_task()
 
     task = asyncio.run(go())
-    assert [t for _, t in seen] == [task, task] and a.index_summary == "graph: indexed"
+    assert [t for _, t in seen] == [task, task]
 
 
 class QuietClient:
@@ -127,7 +113,6 @@ def test_a_silent_stream_stalls_but_an_approval_does_not(monkeypatch, tmp_path, 
     async def drain():
         return [m async for m in a.turn("hi")]
 
-    import pytest
     with pytest.raises(agent.TurnStalled):
         asyncio.run(asyncio.wait_for(drain(), 5))
     assert made[0].events == ["connect", "interrupt", "disconnect"] and a.options().resume == "s1"

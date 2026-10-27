@@ -177,8 +177,8 @@ uv sync
 - Lint: `{a.lint_cmd}`
 - Before changing anything, read `.ds/manifest.toml`: it says which standards are in force here.
 {f"- Accepted code: `canon-lib` is a dependency of this repo. Its modules are listed in `{lib / 'src' / 'canon_lib' / '__init__.py'}`; import from it before writing code of your own, and never copy or edit it here.{chr(10)}" if has_lib else ""}- The team's knowledge base is served by `ds-next mcp` (canon_list, canon_read, code_search, code_get, code_add) for any agent that can reach it.
-- Query the code graph before reading files, and check a symbol's references with the LSP tools
-  before changing it (ds-next registers both when they are installed).
+- The `code` tools (`ds-code mcp`; ds-next registers them when ds-code is installed) answer from the
+  language servers: find_symbol and references before changing a symbol, change_impact before finishing.
 
 <!-- ds:inherited canon {today} -->
 ## Standards

@@ -45,3 +45,30 @@ canon as standards; this file links them with `[[id]]` rather than restating the
 - **Validation:** `tests/test_blocks.py`: an update refuses a file the block did not write, a legacy
   table trusts the tests that import the module, and no metadata goes through a link.
 - **Review date:** when the manifest format next changes.
+
+## local-003: The code tools come from ds-code, in place of the code graph and Serena
+
+- **Status:** Accepted
+- **Date:** 2026-10-27
+- **Context:** ds-next attached codebase-memory-mcp (a code graph) and Serena (a language server)
+  when installed. rule-cli replaced both with its own code tools, eight read-only tools answered
+  by TypeScript's server and Pyright, and found the graph's packages download their binary around
+  a registry mirror, and Serena a GPL-3.0 middleman to the same servers that reports its use. Those
+  tools now live on their own as ds-code, an MCP server any agent starts. ds-next is the one terminal.
+- **Options considered:**
+  1. **Keep the graph and Serena**: two installs outside npm, one of them needing the graph rebuilt
+     as a session starts.
+  2. **Port the code tools to Python**: the language servers are npm packages, so it would still run
+     Node, and two copies would need a parity test.
+  3. **Attach ds-code as `code`**: chosen. One install from npm; every tool is a read, so none asks.
+- **Decision:** `codetools.mcp_servers` offers `ds-code mcp <repo>` as `code` when `ds-code` is on the
+  PATH (through `cmd /c` when what is found is npm's .cmd shim, as on Windows), and `read_only_ids` lists its eight
+  tools. The graph, its index refresh while connecting, Serena and this repo's `.serena/` go. The
+  prompt and the AGENTS.md a new repo gets name the `code` tools.
+- **Consequences:** A machine without ds-code gets no code tools, as before without the graph and
+  Serena. Starting a session no longer waits on indexing.
+- **Validation:** `tests/test_codetools.py`. Started from this config, `ds-code mcp` served its eight
+  read-only tools over stdio and answered `references` and `callers` on this repo from Pyright,
+  tests included. The Windows form is not yet run on Windows.
+- **Review date:** when ds-next has CI on Windows.
+

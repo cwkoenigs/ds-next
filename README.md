@@ -108,18 +108,16 @@ ds-next shows each hook's command and asks.
 
 ## Code intelligence
 
-When installed, ds-next also gives Cortex three code tools. Each is optional, and none is installed by ds-next.
+When installed, ds-next also gives the agent these. Each is optional, and none is installed by ds-next.
 
 | Server | Tool | Auto-approved | Asks |
 |---|---|---|---|
-| `graph` | [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) 0.11.0, analysis profile | every tool it serves (search, trace callers, snippets, outlines) | nothing (no edits served) |
-| `lsp` | [Serena](https://github.com/oraios/serena) 1.7.0 | find symbol, references, declaration, implementations, diagnostics | replace, insert, rename, delete, memory writes |
+| `code` | [ds-code](https://github.com/cwkoenigs/ds-code) (`ds-code mcp`): TypeScript's and Pyright's language servers | all eight: `find_symbol`, `references`, `callers`, `callees`, `file_symbols`, `definition`, `repo_overview`, `change_impact` | nothing (every tool reads) |
 | `ds.snowflake_search` | `cortex search` | docs, catalog objects, table details | nothing |
 
-The graph is refreshed while Cortex connects, and its watcher keeps it current during a session.
-Install them without their own installers, which reconfigure every agent on the machine:
-download the codebase-memory-mcp release, verify it against `checksums.txt`, and copy only the
-binary to `~/.local/bin`; `uv tool install serena-agent==1.7.0`.
+Install ds-code once: clone it, then `npm install` and `npm link` in it (its README has the steps).
+ds-next finds `ds-code` on the PATH and starts it for the repo it runs in; nothing needs indexing or
+refreshing. It replaced codebase-memory-mcp and Serena (local-003).
 
 ## Without the model
 

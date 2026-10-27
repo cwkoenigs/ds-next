@@ -345,16 +345,13 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
 
 
 def code_tools(cwd: Path) -> str:
-    """The prompt lines for whichever code-intelligence tools are installed."""
-    servers = codetools.mcp_servers(cwd)
+    """The prompt lines for the code tools, when ds-code is installed, and Snowflake search."""
     lines = []
-    if codetools.GRAPH in servers:
-        lines.append(f"- Query the code graph before reading files: `graph` tools search_graph, search_code and "
-                     f"trace_path find what already exists and who calls it (project "
-                     f"\"{codetools.graph_project(cwd)}\"). Reuse what it finds instead of rewriting it.")
-    if codetools.LSP in servers:
-        lines.append("- Before changing or removing a symbol, use the `lsp` tools find_symbol and "
-                     "find_referencing_symbols to see every use of it.")
+    if codetools.code_bin():
+        lines.append("- Use the `code` tools before text search: repo_overview to learn a repo, file_symbols before "
+                     "reading a file, find_symbol and definition for where something is defined, references and "
+                     "callers before changing or removing anything, change_impact before finishing a change. "
+                     "Reuse what they find instead of rewriting it.")
     lines.append("- For Snowflake questions (docs, tables, columns), use snowflake_search before guessing.")
     return "\n".join(lines)
 
@@ -424,7 +421,6 @@ class Agent:
         self.effort = effort      # low keeps the interview quick; /effort or --effort raises it
         self.session_id: str | None = None
         self._resume: str | None = None
-        self.index_summary = ""
         self.idle_timeout: float | None = 600      # long tool runs are silent too; approvals pause it
         self._asking = False
         self._last = 0.0
@@ -473,19 +469,15 @@ class Agent:
         _HOOKS_ALLOWED.add(key)
 
     async def connect(self) -> None:
-        """Start the agent and, at the same time, refresh the code graph, so the first query is current."""
+        """Start the agent."""
         if self._client is None:
             if sdk.BACKEND == "cortex":
                 await self._ask_about_hooks()
             client = sdk.SDKClient(self.options())
             # The SDK's connection lives in an anyio task group that must be entered and exited in
-            # the same task, so connect() runs here, never inside gather() or a new task: only the
-            # indexing runs alongside, in a thread. [[gotcha-cortex-sdk]]
-            refresh = (asyncio.ensure_future(asyncio.to_thread(codetools.index, self.cwd))
-                       if codetools.graph_bin() and (self.cwd / ".git").exists() else None)
+            # the same task, so connect() runs here, never inside gather() or a new task.
+            # [[gotcha-cortex-sdk]]
             await client.connect()
-            if refresh is not None:
-                self.index_summary = await refresh
             self._client = client
 
     async def turn(self, prompt: str) -> AsyncIterator[Message]:
