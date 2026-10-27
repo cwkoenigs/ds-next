@@ -257,6 +257,7 @@ def test_reset_forgets_approvals_and_the_old_session(tmp_path, canon, skills):
     assert a._resume is None and a.options().resume is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="os.kill(SIGINT) ends the process on Windows; test_ctrl_c_reaches_the_loop covers it")
 def test_ctrl_c_handler_survives_an_approval_prompt(monkeypatch):
     from ds_next import ui
 
@@ -270,7 +271,7 @@ def test_ctrl_c_handler_survives_an_approval_prompt(monkeypatch):
 
     monkeypatch.setattr(ui, "PromptSession", FakeSession)
     repl = object.__new__(ui.Repl)
-    repl._status, repl.console = None, ui.Console(file=open(os.devnull, "w"))  # noqa: SIM115
+    repl._status, repl.console = None, ui.Console(file=open(os.devnull, "w", encoding="utf-8"))  # noqa: SIM115
 
     async def go():
         fired = []
@@ -402,7 +403,7 @@ def test_nested_hooks_path_inside_git_is_created(tmp_path, canon, skills):
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     subprocess.run(["git", "-C", str(repo), "config", "core.hooksPath", ".git/new/subdir"], check=True)
     scaffold.write(scaffold.Answers(**ANSWERS), repo, canon, skills)
-    assert (repo / ".git" / "new" / "subdir" / "pre-push").stat().st_mode & 0o111
+    assert (repo / ".git" / "new" / "subdir" / "pre-push").stat().st_mode & 0o111 or os.name == "nt"   # Windows has no executable bit; git runs hooks regardless
 
 
 def test_toolbar_survives_markup_in_names(tmp_path):
@@ -565,3 +566,19 @@ def test_a_typed_snowflake_tag_survives_a_blank_schema(tmp_path, canon, skills):
     assert "snowflake" in a.tags and a.snowflake == ""
     files = scaffold.render(scaffold.Answers(**ANSWERS, tags=tags), canon, skills)
     assert "snowflake" in tomllib.loads(files[".ds/manifest.toml"])["repo"]["tags"]
+
+
+def test_ctrl_c_reaches_the_loop():
+    """On every system: the event loop's handler where it has one, the signal module's on Windows."""
+    from ds_next import ui
+
+    async def go():
+        fired = []
+        ui.on_sigint(lambda: fired.append(1))
+        signal.raise_signal(signal.SIGINT)
+        await asyncio.sleep(0.05)
+        ui.off_sigint()
+        return fired
+
+    assert asyncio.run(go()) == [1]
+

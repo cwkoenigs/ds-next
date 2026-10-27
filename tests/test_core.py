@@ -1,5 +1,6 @@
 """The deterministic core: knowledge base, scaffold, reconcile."""
 import datetime as dt
+import os
 import tomllib
 
 import pytest
@@ -80,7 +81,7 @@ def test_new_repo_reconciles_clean(tmp_path, canon, skills):
     files = scaffold.write(a, tmp_path / "out" / a.name, canon, skills)
     repo = tmp_path / "out" / a.name
     assert "src/claims_features/__init__.py" in files
-    assert (repo / ".git" / "hooks" / "pre-push").stat().st_mode & 0o111
+    assert (repo / ".git" / "hooks" / "pre-push").stat().st_mode & 0o111 or os.name == "nt"   # Windows has no executable bit; git runs hooks regardless
     r = reconcile.check(repo, canon)
     assert r.ok and not r.pending, r
     assert r.adopted == ["adr-000", "error-handling"] and "testing" in r.declined
@@ -139,7 +140,8 @@ def test_new_repo_starts_on_canon_lib_when_the_canon_ships_it(tmp_path, canon, s
     (canon.root / "lib" / "pyproject.toml").write_text('[project]\nname = "canon-lib"\n')
     files = scaffold.render(a, canon, skills)
     manifest = files[".ds/manifest.toml"]
-    assert f'canon_lib = "{canon.root / "lib"}"' in manifest and f'canon = "{canon.root}"' in manifest
+    m = tomllib.loads(manifest)["repo"]
+    assert (m["canon_lib"], m["canon"]) == (str(canon.root / "lib"), str(canon.root))
     assert "canon_index = " in manifest
     assert "`canon-lib` is a dependency" in files["AGENTS.md"]
 
@@ -200,7 +202,7 @@ def test_adopt_writes_only_the_system_files_and_leaves_standards_pending(tmp_pat
     assert "Project instructions: `CLAUDE.md`" in agents and "[[adr-000]]" in agents and "[[testing]]" in agents
     assert "pending until the owner adopts" in agents
     assert "docs/adr/" in (repo / "DECISIONS.md").read_text()
-    assert (repo / ".git" / "hooks" / "pre-push").stat().st_mode & 0o111
+    assert (repo / ".git" / "hooks" / "pre-push").stat().st_mode & 0o111 or os.name == "nt"   # Windows has no executable bit; git runs hooks regardless
     r = reconcile.check(repo, canon)
     assert r.ok and r.pending == ["adr-000 v1", "testing v1"] and r.adopted == []
     with pytest.raises(FileExistsError, match="already in the system"):

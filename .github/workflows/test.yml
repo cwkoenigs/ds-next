@@ -1,5 +1,5 @@
 # The tests on the team's two systems, at the oldest Python ds-next supports and the newest. Tests that
-# need a canon checkout, docs-ds, Codex or a live agent skip, and say so (-rs lists them).
+# need a canon checkout, docs-ds, Codex or a live agent skip, and say so (-rfEs lists them and any failure).
 name: test
 
 on:
@@ -23,4 +23,4 @@ jobs:
       # Some tests commit to scratch repos.
       - run: git config --global user.name ci && git config --global user.email ci@example.invalid
       - run: python -m pip install -e ".[test]"
-      - run: python -m pytest -q -rs
+      - run: python -m pytest -q -rfEs
