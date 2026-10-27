@@ -157,15 +157,16 @@ def ask_first(read_only: set[str] | frozenset[str]) -> Any:
 HOOK_FILES = (".cortex/settings.json", ".cortex/settings.local.json", ".claude/settings.json", ".claude/settings.local.json")
 
 
-def project_hooks(cwd: Path) -> list[tuple[str, list[str]]]:
-    """The hooks a repo's own settings define: each file, and what each event runs. A file that
-    names hooks but does not read as JSON is shown whole, since Cortex may read it anyway."""
+def project_hooks(cwd: Path) -> list[tuple[str, list[str], str]]:
+    """The hooks a repo's own settings define: each file, what each event runs, and the file's text.
+    A hook is shown as its command only when that is all it has; any other field (args, an env, a
+    source) shows it whole, as does a file that names hooks but does not read as JSON."""
     try:
         r = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=10, check=False)
         top = r.stdout.strip() if r.returncode == 0 else ""
     except (OSError, subprocess.SubprocessError):
         top = ""
-    out: list[tuple[str, list[str]]] = []
+    out: list[tuple[str, list[str], str]] = []
     for d in dict.fromkeys([Path(cwd).resolve(), *([Path(top).resolve()] if top else [])]):
         for rel in HOOK_FILES:
             f = d / rel
@@ -177,7 +178,7 @@ def project_hooks(cwd: Path) -> list[tuple[str, list[str]]]:
                 data = json.loads(text)
             except ValueError:
                 if "hooks" in text.lower():
-                    out.append((str(f), [text.strip()]))
+                    out.append((str(f), [text.strip()], text))
                 continue
             hooks = data.get("hooks") if isinstance(data, dict) else None
             if not isinstance(hooks, dict) or not hooks:
@@ -189,9 +190,10 @@ def project_hooks(cwd: Path) -> list[tuple[str, list[str]]]:
                         continue
                     on = f" ({m['matcher']})" if m.get("matcher") else ""
                     for h in m["hooks"]:
-                        command = h.get("command") if isinstance(h, dict) else None
-                        runs.append(f"{event}{on}: {command if isinstance(command, str) else json.dumps(h)}")
-            out.append((str(f), runs or [json.dumps(hooks)]))
+                        plain = (isinstance(h, dict) and isinstance(h.get("command"), str)
+                                 and set(h) <= {"type", "command", "timeout"})
+                        runs.append(f"{event}{on}: {h['command'] if plain else json.dumps(h, separators=(',', ':'))}")
+            out.append((str(f), runs or [json.dumps(hooks)], text))
     return out
 
 

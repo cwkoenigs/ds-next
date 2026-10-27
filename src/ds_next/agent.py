@@ -461,15 +461,15 @@ class Agent:
         to switch them off, so the person sees each command and decides before a session starts in
         that repo. A no starts nothing; a yes lasts while ds-next runs, until the hooks change."""
         found = sdk.project_hooks(self.cwd)
-        key = json.dumps(found)
+        key = json.dumps(found)    # the files' whole text: any change to them asks again
         if not found or key in _HOOKS_ALLOWED:
             return
-        command = "\n".join(line for file, runs in found for line in (f"# {file}", *runs))
+        command = "\n".join(line for file, runs, _ in found for line in (f"# {file}", *runs))
         detail = {"command": command, "description": "Cortex Code runs these from this repo's settings as you work, without asking"}
         answer = await self.ask_permission("Hooks", detail, None) if self.ask_permission else None
         if not isinstance(answer, PermissionResultAllow):
             raise sdk.SDKError(f"Cortex Code not started: this repo's settings define hooks it would run "
-                               f"({', '.join(f for f, _ in found)}). Remove them, or run with DS_AGENT=claude, which runs no hooks.")
+                               f"({', '.join(f for f, _, _ in found)}). Remove them, or run with DS_AGENT=claude, which runs no hooks.")
         _HOOKS_ALLOWED.add(key)
 
     async def connect(self) -> None:
