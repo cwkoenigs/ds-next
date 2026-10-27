@@ -235,13 +235,16 @@ def add(repo: Path, ids: list[str], canon: Canon | None = None, by: str | None =
     """Add these code symbols to the repo: each block's module cut down to them (plus what they
     need), and the block tests that use only them. Merges with symbols added before; a repo that
     already has the whole block keeps it."""
-    from .scaffold import _add_to_list_line, _git_user, _inside
+    from .scaffold import _add_to_list_line, _git_user, _inside, owned_files
 
     canon = canon or Canon()
     repo = Path(repo).resolve()
     manifest_path = repo / ".ds" / "manifest.toml"
     if not manifest_path.is_file():
         raise ValueError(f"{repo} has no .ds/manifest.toml; create it with ds-next new first")
+    # Both are rewritten after the code is: refuse a link now, before anything is written.
+    _inside(repo, ".ds/manifest.toml")
+    _inside(repo, "pyproject.toml")
     manifest_text = manifest_path.read_text()
     manifest = tomllib.loads(manifest_text)
     package = str(manifest.get("repo", {}).get("name", "")).replace("-", "_")
@@ -270,10 +273,10 @@ def add(repo: Path, ids: list[str], canon: Canon | None = None, by: str | None =
         p = pieces(canon, all_ids, package)[bid]
         files = {p["code"][0]: p["code"][1], **dict(p["tests"])}
         targets = {rel: _inside(repo, rel) for rel in files}
-        if prior is None:
-            clash = [rel for rel, t in targets.items() if t.exists()]
-            if clash:
-                raise FileExistsError(f"not added: {', '.join(clash)} already exist and were not written from {bid}")
+        owned = owned_files(prior, targets, package, canon.blocks[bid].module) if prior is not None else set()
+        clash = [rel for rel, t in targets.items() if t.exists() and rel not in owned]
+        if clash:
+            raise FileExistsError(f"not {'updated' if prior else 'added'}: {', '.join(clash)} already exist and were not written from {bid}")
         for rel, text in files.items():
             targets[rel].parent.mkdir(parents=True, exist_ok=True)
             targets[rel].write_text(text)
@@ -283,7 +286,7 @@ def add(repo: Path, ids: list[str], canon: Canon | None = None, by: str | None =
                                  ("dev", list(b.test_requires), [t for _, t in p["tests"]])):
             if not reqs or not any(_third_party(t) for t in texts):
                 continue
-            pyproject = repo / "pyproject.toml"
+            pyproject = _inside(repo, "pyproject.toml")
             result = _add_to_list_line(pyproject.read_text() if pyproject.is_file() else "", key, reqs)
             if result is None:
                 manual += [f"{r} ({key})" for r in reqs]
@@ -294,7 +297,8 @@ def add(repo: Path, ids: list[str], canon: Canon | None = None, by: str | None =
         when = today or dt.date.today()
         table = (f"[blocks.{bid}]\nversion = {b.version}\nby = {json_str(by or _git_user())}\n"
                  f'on = "{when}"\nmodule = {json_str(p["code"][0])}\n'
-                 f"symbols = [{', '.join(json_str(s) for s in p['symbols'])}]\n")
+                 f"symbols = [{', '.join(json_str(s) for s in p['symbols'])}]\n"
+                 f"files = [{', '.join(json_str(f) for f in sorted(files))}]\n")
         existing = re.compile(rf"^\[blocks\.{re.escape(bid)}\]\n(?:(?!\[).*\n?)*", re.MULTILINE)
         if existing.search(manifest_text):
             manifest_text = existing.sub(table + "\n", manifest_text, count=1)
