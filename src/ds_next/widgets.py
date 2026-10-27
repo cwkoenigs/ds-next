@@ -26,8 +26,8 @@ from prompt_toolkit.layout.menus import CompletionsMenuControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
-from . import ui_style as S
-from .ui_style import LABEL_W, G
+from ds_cli_design import ui_style as S
+from ds_cli_design.ui_style import LABEL_W, G
 
 STYLE = Style.from_dict(S.pt_style())
 
