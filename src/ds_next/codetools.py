@@ -10,7 +10,6 @@ Each is optional: missing tools are simply not offered. Nothing here installs an
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -29,14 +28,13 @@ def cortex_bin() -> str | None:
 
 
 def mcp_servers(cwd: Path) -> dict[str, dict]:
-    """Stdio MCP server configs for the agent, for the tools that are installed. On Windows `ds-code`
-    is npm's .cmd shim, which an agent can only start through cmd."""
-    servers: dict[str, dict] = {}
-    if c := code_bin():
-        args = ["mcp", str(Path(cwd).resolve())]
-        servers[CODE] = ({"type": "stdio", "command": "cmd", "args": ["/c", c, *args]} if os.name == "nt"
-                         else {"type": "stdio", "command": c, "args": args})
-    return servers
+    """Stdio MCP server configs for the agent, for the tools that are installed. npm installs `ds-code`
+    on Windows as a .cmd shim, which an agent can only start through cmd."""
+    c = code_bin()
+    if c is None:
+        return {}
+    cmd = ["cmd", "/c", c] if Path(c).suffix.lower() in (".cmd", ".bat") else [c]
+    return {CODE: {"type": "stdio", "command": cmd[0], "args": [*cmd[1:], "mcp", str(Path(cwd).resolve())]}}
 
 
 def read_only_ids(servers: dict[str, dict]) -> set[str]:

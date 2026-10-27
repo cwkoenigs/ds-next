@@ -62,7 +62,7 @@ canon as standards; this file links them with `[[id]]` rather than restating the
      Node, and two copies would need a parity test.
   3. **Attach ds-code as `code`**: chosen. One install from npm; every tool is a read, so none asks.
 - **Decision:** `codetools.mcp_servers` offers `ds-code mcp <repo>` as `code` when `ds-code` is on the
-  PATH (through `cmd /c` on Windows, where npm's shim is a .cmd), and `read_only_ids` lists its eight
+  PATH (through `cmd /c` when what is found is npm's .cmd shim, as on Windows), and `read_only_ids` lists its eight
   tools. The graph, its index refresh while connecting, Serena and this repo's `.serena/` go. The
   prompt and the AGENTS.md a new repo gets name the `code` tools.
 - **Consequences:** A machine without ds-code gets no code tools, as before without the graph and

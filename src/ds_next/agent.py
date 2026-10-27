@@ -345,10 +345,9 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
 
 
 def code_tools(cwd: Path) -> str:
-    """The prompt lines for whichever code-intelligence tools are installed."""
-    servers = codetools.mcp_servers(cwd)
+    """The prompt lines for the code tools, when ds-code is installed, and Snowflake search."""
     lines = []
-    if codetools.CODE in servers:
+    if codetools.code_bin():
         lines.append("- Use the `code` tools before text search: repo_overview to learn a repo, file_symbols before "
                      "reading a file, find_symbol and definition for where something is defined, references and "
                      "callers before changing or removing anything, change_impact before finishing a change. "

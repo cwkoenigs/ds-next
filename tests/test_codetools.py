@@ -1,7 +1,8 @@
 """Code tools and Snowflake search wiring: offered only when installed, every code tool a read."""
 import asyncio
 import subprocess
-from types import SimpleNamespace
+
+import pytest
 
 from ds_next import agent, codetools
 
@@ -16,11 +17,18 @@ def test_nothing_offered_when_nothing_installed(monkeypatch, tmp_path):
     assert "`code` tools" not in agent.code_tools(tmp_path)
 
 
-def test_servers_and_approvals(monkeypatch, tmp_path, canon, skills):
+@pytest.mark.parametrize("found, command, before", [
+    ("/bin/ds-code", "/bin/ds-code", []),
+    ("C:/npm/ds-code.CMD", "cmd", ["/c", "C:/npm/ds-code.CMD"]),      # npm's shim on Windows
+])
+def test_the_server_as_installed(monkeypatch, tmp_path, found, command, before):
+    monkeypatch.setattr(codetools.shutil, "which", lambda name: found if name == "ds-code" else None)
+    assert codetools.mcp_servers(tmp_path)["code"] == {"type": "stdio", "command": command,
+                                                       "args": [*before, "mcp", str(tmp_path.resolve())]}
+
+
+def test_its_tools_never_ask(monkeypatch, tmp_path, canon, skills):
     monkeypatch.setattr(codetools.shutil, "which", fake_which({"ds-code"}))
-    monkeypatch.setattr(codetools, "os", SimpleNamespace(name="posix"))
-    servers = codetools.mcp_servers(tmp_path)
-    assert servers["code"] == {"type": "stdio", "command": "/bin/ds-code", "args": ["mcp", str(tmp_path.resolve())]}
     a = agent.Agent(tmp_path, ask_permission=lambda *x: asyncio.sleep(0, "asked"), canon=canon, skills=skills)
     opts = a.options()
     assert set(opts.mcp_servers) == {"ds", "code"} and opts.allowed_tools == []
@@ -32,13 +40,6 @@ def test_servers_and_approvals(monkeypatch, tmp_path, canon, skills):
         assert permit(read).behavior == "allow", read
     assert permit("mcp__code__write_file") == "asked"          # only the eight tools ds-code serves
     assert "change_impact before finishing a change" in agent.code_tools(tmp_path)
-
-
-def test_windows_starts_the_npm_shim_through_cmd(monkeypatch, tmp_path):
-    monkeypatch.setattr(codetools.shutil, "which", fake_which({"ds-code"}))
-    monkeypatch.setattr(codetools, "os", SimpleNamespace(name="nt"))       # this module only: pathlib reads os.name too
-    server = codetools.mcp_servers(tmp_path)["code"]
-    assert server["command"] == "cmd" and server["args"] == ["/c", "/bin/ds-code", "mcp", str(tmp_path.resolve())]
 
 
 def test_snowflake_search(monkeypatch):
@@ -70,7 +71,6 @@ def test_connect_and_close_happen_in_the_callers_task(monkeypatch, tmp_path, can
             seen.append(("disconnect", asyncio.current_task()))
 
     monkeypatch.setattr(agent.sdk, "SDKClient", FakeClient)
-    monkeypatch.setattr(codetools.shutil, "which", fake_which({"ds-code"}))
     a = agent.Agent(tmp_path, canon=canon, skills=skills)
 
     async def go():
@@ -113,7 +113,6 @@ def test_a_silent_stream_stalls_but_an_approval_does_not(monkeypatch, tmp_path, 
     async def drain():
         return [m async for m in a.turn("hi")]
 
-    import pytest
     with pytest.raises(agent.TurnStalled):
         asyncio.run(asyncio.wait_for(drain(), 5))
     assert made[0].events == ["connect", "interrupt", "disconnect"] and a.options().resume == "s1"
