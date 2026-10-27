@@ -3,8 +3,8 @@
 <!-- ds:local interview 2026-10-16 -->
 `ds`, rebuilt small. A terminal that looks and behaves like Claude Code, drives Claude Code or
 Cortex Code through their agent SDKs (Cortex's `snowflake-cortex-agent-sdk` is a fork of Claude's
-`claude-agent-sdk`; `sdk.py` picks one per machine), and scaffolds projects from the team's
-knowledge base. About 1,350 lines of Python in seven modules.
+`claude-agent-sdk`) or Codex through its app-server (`codex.py`), with `sdk.py` picking one per
+machine, and scaffolds projects from the team's knowledge base. About 1,350 lines of Python in seven modules.
 
 Owner: ckoenigs
 
@@ -35,7 +35,7 @@ flows back to where it is written.
 | canon | the only place a standard's text exists; ds-next reads `index.json` and the files | `$DS_CANON`, else `~/Developer/canon` |
 | skills-os | procedures the agent follows (`skill_read`), offered as `/so-*` slash commands, and named in every new repo's AGENTS.md | `$DS_SKILLS`, else `~/Developer/skills-os` |
 | docs-ds | the Docusaurus shell `/docs` builds with; never modified | `$DS_DOCS_SHELL`, else `~/Developer/docs-ds` |
-| Claude Code or Cortex Code | the model and its tools, driven through its SDK with the knowledge base as in-process MCP tools | `claude` or `cortex` on `PATH`; `ds-next setup --agent claude` (or `cortex`) decides which the terminal uses, `DS_AGENT` overrides for one run |
+| Claude Code, Cortex Code or Codex | the model and its tools, driven through its SDK (Codex: its app-server) with the knowledge base as in-process tools | `claude`, `cortex` or `codex` on `PATH`; `ds-next setup --agent claude` (or `cortex`, or `codex`) decides which the terminal uses, `DS_AGENT` overrides for one run |
 
 ## Run
 
@@ -91,7 +91,7 @@ form approves exactly what you submitted; if the model changes a value, you appr
 | `/captures` | drafts waiting to become canon merge requests | no |
 | `/effort [level]` | thinking effort, `low` by default for speed; resumes the same session | no |
 | `/model`, `/clear`, `/help`, `/exit` | session control | no |
-| anything else | a turn with the agent (Claude Code or Cortex Code) | yes |
+| anything else | a turn with the agent (Claude Code, Cortex Code or Codex) | yes |
 
 While the model works, the status line shows the step and the seconds elapsed. Ctrl-C
 interrupts a turn and keeps the session. Enter on an empty line answers the model's last
@@ -157,6 +157,13 @@ and a pre-push hook. A CLI is also tagged `package`, so it inherits package stan
   Code from `.claude/settings.json`, Cortex Code from `.cortex/` and `.claude/settings.json`. Claude's
   are switched off (`disableAllHooks` through `settings`); Cortex has no switch, so ds-next asks
   first (local-001).
+- Codex runs through `codex app-server`, the JSON-RPC its editor extensions use: unlike `codex exec`, it
+  asks before a command runs or a file changes, and it calls tools the client serves. Every tool
+  reaches it as a dynamic tool from ds-next, the code tools included, so each call goes through
+  ds-next's approval as with the other agents. A no declines, as a denial does with Claude Code; the
+  turn goes on and the model asks what to do instead. The app-server is marked experimental:
+  `tests/test_codex.py` drives the real binary when one is installed, so rerun it after upgrading
+  Codex (local-004).
 - An allow rule in the person's own Claude settings skips `can_use_tool` (checked offline against
   the real CLI). A `PreToolUse` callback that answers "ask" sends the call back to it; settings-file
   hooks being off does not stop it (local-001).

@@ -1,10 +1,11 @@
 """Which agent runs the turns, and the SDK names for it.
 
-Claude Code (claude-agent-sdk) or Cortex Code (snowflake-cortex-agent-sdk, Snowflake's fork of
-the same SDK: the same message types and tool helpers, options that differ in a few names).
-Chosen by DS_AGENT, then `agent = "..."` in ~/.ds/config.toml (`ds-next setup --agent` writes
-it), then whichever CLI is on PATH, Cortex first when both are. Everything else imports from
-here, so nothing but this module knows which one is running.
+Claude Code (claude-agent-sdk), Cortex Code (snowflake-cortex-agent-sdk, Snowflake's fork of the
+same SDK: the same message types and tool helpers, options that differ in a few names), or Codex
+(its app-server, driven by codex.py with claude-agent-sdk's message types). Chosen by DS_AGENT, then
+`agent = "..."` in ~/.ds/config.toml (`ds-next setup --agent` writes it), then whichever CLI is on
+PATH: Cortex, Claude, Codex. Everything else imports from here, so nothing but this module knows
+which one is running.
 """
 from __future__ import annotations
 
@@ -16,9 +17,9 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-BACKENDS = ("claude", "cortex")
+BACKENDS = ("claude", "cortex", "codex")
 CONFIG = Path.home() / ".ds" / "config.toml"
-LABELS = {"claude": "Claude Code", "cortex": "Cortex Code"}
+LABELS = {"claude": "Claude Code", "cortex": "Cortex Code", "codex": "Codex"}
 
 
 def configured() -> str | None:
@@ -41,6 +42,8 @@ def backend() -> str:
         return "cortex"
     if shutil.which("claude"):
         return "claude"
+    if shutil.which("codex"):
+        return "codex"
     return "cortex"
 
 
@@ -48,7 +51,7 @@ BACKEND = backend()
 LABEL = LABELS[BACKEND]
 CLI = BACKEND            # the executable has the same name
 
-if BACKEND == "claude":
+if BACKEND in ("claude", "codex"):
     from claude_agent_sdk import (
         AssistantMessage,
         CLINotFoundError,
@@ -75,6 +78,8 @@ if BACKEND == "claude":
     from claude_agent_sdk import (
         ClaudeSDKError as SDKError,
     )
+    if BACKEND == "codex":
+        from .codex import CodexClient as SDKClient  # noqa: F811 - Codex has its own client
 else:
     from cortex_agent_sdk.cortexcode import (
         AssistantMessage,
@@ -201,6 +206,10 @@ def options(*, cwd: str, mcp_servers: dict[str, Any], append_system_prompt: str,
             model: str | None, connection: str | None, effort: str | None, resume: str | None,
             read_only: set[str] | frozenset[str] = frozenset()) -> Any:
     """The options object for the running backend, from the one set of values the terminal has."""
+    if BACKEND == "codex":
+        from .codex import CodexOptions
+        return CodexOptions(cwd=cwd, mcp_servers=mcp_servers, system_prompt=append_system_prompt, can_use_tool=can_use_tool,
+                            model=model, effort=effort, resume=resume, read_only=read_only)
     if BACKEND == "claude":
         return _Options(
             cwd=cwd,

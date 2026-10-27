@@ -153,6 +153,9 @@ def render(console: Console, msg: Any, state: dict) -> None:
         parts = [f"#{state.get('turn_no', 1)}", f"{n} tool call{'s' if n != 1 else ''}", f"{secs:.1f}s"]
         if msg.total_cost_usd:
             parts.append(f"${msg.total_cost_usd:.4f}")
+        elif isinstance(msg.usage, dict) and msg.usage.get("total_tokens"):     # Codex reports tokens, not dollars
+            n = msg.usage["total_tokens"]
+            parts.append(f"{n / 1000:.1f}k tokens" if n >= 1000 else f"{n} tokens")
         if msg.is_error or msg.subtype != "success":
             console.print(S.result(f"{msg.subtype}: {'; '.join(msg.errors or [])}", error=True))
         console.print(S.footer(*parts))
@@ -251,6 +254,10 @@ def describe_permission(tool_name: str, inp: dict[str, Any]) -> tuple[str, str]:
         return _short(tool_name), json.dumps(inp, indent=1) if inp else ""
     if isinstance(inp, dict) and isinstance(inp.get("command"), str):     # Claude Code's Bash
         return tool_name, inp["command"]
+    if isinstance(inp, dict) and isinstance(inp.get("files"), list):      # a Codex patch: each file, then its lines
+        files = [f"{f.get('kind', 'update')} {f.get('path', '')}" + (f" → {f['to']}" if f.get("to") else "") for f in inp["files"]]
+        rest = {k: v for k, v in inp.items() if k not in ("files", "file_path")}
+        return tool_name, "\n".join([*files, json.dumps(rest, indent=1)])
     return tool_name, resource or json.dumps(inp, indent=1)
 
 
@@ -640,7 +647,7 @@ class Repl:
 
         self._sigint = on_sigint
         loop.add_signal_handler(signal.SIGINT, on_sigint)
-        self.state["step"] = "Connecting to Cortex Code" if not self.agent.connected else "Thinking"
+        self.state["step"] = f"Connecting to {sdk.LABEL}" if not self.agent.connected else "Thinking"
         self.state["asked"] = False
         started = time.monotonic()
 

@@ -9,6 +9,8 @@ dependencies = [
     "snowflake-cortex-agent-sdk==0.0.2",
     # Claude Code's SDK, the one Cortex's is a fork of; sdk.py picks whichever agent this machine uses.
     "claude-agent-sdk>=0.2",
+    # MCP itself: codex.py serves the terminal's tools to Codex through it (claude-agent-sdk needs it too).
+    "mcp>=1.0,<2",
     "rich>=13",
     "prompt-toolkit>=3.0.40",
     "typer>=0.12",

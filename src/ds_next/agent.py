@@ -520,7 +520,7 @@ class Agent:
             resume = self.session_id
             await self.close()
             self._resume = resume
-            raise TurnStalled(f"Cortex sent nothing for {limit:.0f}s, so the turn was interrupted. "
+            raise TurnStalled(f"{sdk.LABEL} sent nothing for {limit:.0f}s, so the turn was interrupted. "
                               "Ask again to continue the same session.") from None
         finally:
             if dog is not None:
