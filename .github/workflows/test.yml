@@ -22,12 +22,5 @@ jobs:
           python-version: ${{ matrix.python }}
       # Some tests commit to scratch repos.
       - run: git config --global user.name ci && git config --global user.email ci@example.invalid
-      # ds-cli-design, the terminal design system, comes from its private repo: with a token in the
-      # DS_CLI_DESIGN_TOKEN secret, git fetches it with that; without one (a public repo), this does nothing.
-      - name: Reach ds-cli-design
-        shell: bash
-        env:
-          TOKEN: ${{ secrets.DS_CLI_DESIGN_TOKEN }}
-        run: if [ -n "$TOKEN" ]; then git config --global url."https://x-access-token:${TOKEN}@github.com/cwkoenigs/ds-cli-design".insteadOf "https://github.com/cwkoenigs/ds-cli-design"; fi
       - run: python -m pip install -e ".[test]"
       - run: python -m pytest -q -rfEs

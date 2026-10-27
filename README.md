@@ -47,8 +47,7 @@ DS_LIVE=1 .venv/bin/pytest -q -m live    # one end-to-end run through Cortex Cod
 ```
 
 The install fetches [ds-cli-design](https://github.com/cwkoenigs/ds-cli-design), the terminal design
-system ds-next draws with, from its git tag: a private repo, so git needs your GitHub login
-(`gh auth setup-git` once).
+system ds-next draws with, from its git tag (a public repo: nothing to log in to).
 
 ## The terminal
 

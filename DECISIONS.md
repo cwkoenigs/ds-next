@@ -119,8 +119,9 @@ canon as standards; this file links them with `[[id]]` rather than restating the
 - **Decision:** ds-next depends on `ds-cli-design @ git+https://github.com/cwkoenigs/ds-cli-design@v1.1.0`
   and imports `ds_cli_design.ui_style`; `src/ds_next/ui_style.py` is gone. A change to the look is made
   in ds-cli-design, released as a tag, and taken here by moving the pin.
-- **Consequences:** ds-cli-design is a private repo: installing ds-next needs a GitHub login for git,
-  and CI needs the `DS_CLI_DESIGN_TOKEN` secret, unless ds-cli-design is made public.
+- **Consequences:** ds-cli-design was made public for this (2026-10-27), so ds-next, its CI and atlas
+  install it with no login. Its first commit carries an older copy of four ds-next files from the
+  design export (`examples/ds-next/`), public with it; the owner accepted that.
 - **Validation:** the whole suite on the library's style; banner, prompt box, theme and
   prompt_toolkit styles compared span for span with the deleted copy.
 - **Review date:** the next design export.
