@@ -198,13 +198,13 @@ def docs(output: Path = typer.Option(None, "--out", help="build directory (defau
 
 @app.command()
 def setup(check: bool = typer.Option(False, "--check", help="report what would change; write nothing"),
-          agent: str = typer.Option("auto", "--agent", help="claude, cortex, or auto (every one on PATH); a "
+          agent: str = typer.Option("auto", "--agent", help="claude, cortex, codex, or auto (every one on PATH); a "
                                     "choice is remembered in ~/.ds/config.toml as the terminal's agent")):
-    """Connect this machine's agents (Claude Code, Cortex Code) to the knowledge system. Safe to rerun."""
+    """Connect this machine's agents (Claude Code, Cortex Code, Codex) to the knowledge system. Safe to rerun."""
     from . import setup as setup_mod
 
-    if agent not in ("auto", "claude", "cortex"):
-        _err(f"{agent} is not an agent", "claude, cortex or auto")
+    if agent not in ("auto", "claude", "cortex", "codex"):
+        _err(f"{agent} is not an agent", "claude, cortex, codex or auto")
         raise typer.Exit(2)
     ok = setup_mod.setup(agent, check, lambda line: out.print(Text("  " + line)))
     if not check:

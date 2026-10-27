@@ -72,3 +72,34 @@ canon as standards; this file links them with `[[id]]` rather than restating the
   tests included. The Windows form is not yet run on Windows.
 - **Review date:** when ds-next has CI on Windows.
 
+## local-004: Codex through its app-server, every tool served by ds-next
+
+- **Status:** Accepted
+- **Date:** 2026-10-27
+- **Context:** The owner's work computer has Cortex Code and Codex, not Claude Code. rule-cli drove
+  Codex (its local-009); with rule-cli cut down to the code tools (ds-code), ds-next is the terminal
+  and needs Codex as a third agent, with the same tools and the same approvals.
+- **Options considered:**
+  1. **`codex exec`**: it cannot ask before a command runs or a file changes, and takes no tools from
+     the client.
+  2. **`codex app-server`, tools from MCP servers in Codex's config**: Codex would approve the ds
+     writes by its own rules, not ds-next's, and its protocol has no approval request for an MCP tool.
+  3. **`codex app-server`, every tool a dynamic tool served by ds-next**: chosen, as rule-cli did.
+- **Decision:** `DS_AGENT=codex` (or `agent = "codex"`, or `codex` alone on PATH) runs `codex
+  app-server` (CODEX_CLI_PATH, else `codex` on PATH). `codex.py`'s client has the SDK clients' shape
+  and turns Codex's notifications into the SDK's message types, so the agent loop and the UI are
+  unchanged. ds-next's own tools are called through their in-process server's handlers; ds-code's
+  through an MCP client session. Threads run `approvalPolicy: untrusted` in the `workspace-write`
+  sandbox; `ds` and `code` in the user's Codex config are switched off, since they are served already.
+  A denial declines (the model is told and asks); one that says to interrupt cancels the turn. Codex
+  starts in a session of its own and is ended by the end of its input, then its process group.
+  `ds-next setup --agent codex` registers `ds` with Codex and links the skills.
+- **Consequences:** Codex is whatever the machine has installed, not pinned, and its app-server is
+  marked experimental. Its turns show tokens, not dollars.
+- **Validation:** `tests/test_codex.py`: a stand-in app-server plays a turn (a ds tool unasked, a
+  command asked, yes, no and interrupt); the code tools reach Codex through their server; and the
+  real app-server (0.162.1 here), its model calls going to a local stand-in, called a ds tool without
+  asking and ran a command on a yes and not on a no. `ds-next ask` with `DS_AGENT=codex` drew a
+  whole turn. Codex has not yet been run against a real model, nor on Windows.
+- **Review date:** each Codex upgrade.
+

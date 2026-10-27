@@ -85,3 +85,25 @@ def test_setup_claude_registers_links_and_allows(tmp_path, monkeypatch):
     again: list[str] = []
     assert setup.setup_claude(False, again.append)
     assert any("already allowed" in line for line in again) and any("linked (" in line for line in again)
+
+
+def test_setup_codex_registers_and_links(tmp_path, monkeypatch):
+    import shutil
+    calls: list[list[str]] = []
+
+    def run(args):
+        calls.append(args)
+        return (1, "") if args[1:3] == ["mcp", "get"] else (0, "")
+    monkeypatch.setattr(setup, "_run", run)
+    monkeypatch.setattr(shutil, "which", lambda name: "/bin/codex" if name == "codex" else None)
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-home"))
+    binary = tmp_path / "venv" / "bin" / "ds-next"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n")
+    monkeypatch.setattr(setup, "ds_next_bin", lambda: binary)
+    said: list[str] = []
+    assert setup.setup_codex(False, said.append)
+    assert ["/bin/codex", "mcp", "add", "ds", "--", str(binary), "mcp"] in calls
+    link = tmp_path / "codex-home" / "skills" / "ds-new"
+    assert link.is_symlink() and (link / "SKILL.md").is_file()
+    assert setup.setup("auto", True, said.append)          # auto finds Codex on PATH too
