@@ -30,9 +30,9 @@ def note(method, params):
 
 def ask(method, params):
     rid = next_id[0] = next_id[0] + 1
-    answered[rid] = threading.Event()
+    done = answered[rid] = threading.Event()     # held here: the reply may pop it before wait() is reached
     out({"id": rid, "method": method, "params": params})
-    answered[rid].wait()
+    done.wait()
     return replies.pop(rid)
 
 
