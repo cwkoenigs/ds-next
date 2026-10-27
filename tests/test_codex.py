@@ -3,6 +3,7 @@ on their own, and, where Codex is installed, the real app-server with a stand-in
 speaks claude-agent-sdk's types (`types` here), whichever agent `sdk` found on this machine."""
 import asyncio
 import json
+import os
 import shutil
 import sys
 import textwrap
@@ -38,12 +39,20 @@ def fake(monkeypatch, tmp_path, as_codex):
 
 
 def turn(a, prompt="run the tests"):
+    seen = {}
+
     async def go():
         try:
             return [m async for m in a.turn(prompt)]
         finally:
+            seen["stderr"] = getattr(a._client, "_log", "")
             await a.close()
-    return asyncio.run(asyncio.wait_for(go(), 20))
+    try:
+        return asyncio.run(asyncio.wait_for(go(), 20))
+    except TimeoutError as e:        # say what the agent did, since nothing else will
+        log = os.environ.get("FAKE_CODEX_LOG", "")
+        received = Path(log).read_text()[-3000:] if log and Path(log).is_file() else ""
+        raise AssertionError(f"no result in 20s\nthe agent's stderr: {seen.get('stderr')!r}\nit received:\n{received}") from e
 
 
 def answering(answer):

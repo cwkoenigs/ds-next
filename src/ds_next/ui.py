@@ -241,6 +241,24 @@ class Approver:
                     return PermissionResultDeny(message="The user declined this call. Ask what to do instead.")
 
 
+def on_sigint(handler) -> None:
+    """Run handler in the event loop on ctrl-c. Windows' event loop has no add_signal_handler, so
+    there the signal module hands the signal to the loop instead."""
+    loop = asyncio.get_running_loop()
+    try:
+        loop.add_signal_handler(signal.SIGINT, handler)
+    except NotImplementedError:
+        signal.signal(signal.SIGINT, lambda *_: loop.call_soon_threadsafe(handler))
+
+
+def off_sigint() -> None:
+    """ctrl-c back to Python's own KeyboardInterrupt."""
+    try:
+        asyncio.get_running_loop().remove_signal_handler(signal.SIGINT)
+    except NotImplementedError:
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+
+
 def describe_permission(tool_name: str, inp: dict[str, Any]) -> tuple[str, str]:
     """(title, detail) for an approval, naming ds tools by their short name. Cortex sends a kind
     ("MCP", "Bash", "Write"...) and a resource string; Claude Code sends the tool's id and its
@@ -393,7 +411,7 @@ class Repl:
             return "n"
         finally:
             if self._sigint is not None:
-                asyncio.get_running_loop().add_signal_handler(signal.SIGINT, self._sigint)
+                on_sigint(self._sigint)
             if self._status:
                 self._status.start()
 
@@ -640,13 +658,13 @@ class Repl:
         loop = asyncio.get_running_loop()
         interrupted = False
 
-        def on_sigint():
+        def on_sigint_():
             nonlocal interrupted
             interrupted = True
             asyncio.ensure_future(self.agent.interrupt())
 
-        self._sigint = on_sigint
-        loop.add_signal_handler(signal.SIGINT, on_sigint)
+        self._sigint = on_sigint_
+        on_sigint(on_sigint_)
         self.state["step"] = f"Connecting to {sdk.LABEL}" if not self.agent.connected else "Thinking"
         self.state["asked"] = False
         started = time.monotonic()
@@ -684,7 +702,7 @@ class Repl:
             self._status.stop()
             self._status = None
             self._sigint = None
-            loop.remove_signal_handler(signal.SIGINT)
+            off_sigint()
         if interrupted:
             self.console.print(S.result(f"interrupted after {int(time.monotonic() - started)}s · session kept", error=True))
             self.console.print(S.footer(f"#{self.turn_no}"))

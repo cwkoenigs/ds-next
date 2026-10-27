@@ -312,7 +312,7 @@ def _inside(dest: Path, rel: str) -> Path:
     """The path for rel under dest, refusing anything that would land elsewhere or pass
     through a symbolic link."""
     target = dest / rel
-    if Path(rel).is_absolute() or ".." in Path(rel).parts:
+    if Path(rel).anchor or ".." in Path(rel).parts:      # anchor: a drive or a root, as /etc/x has on Windows
         raise ValueError(f"refusing to write {rel!r}: not a plain relative path")
     p = dest
     for part in Path(rel).parts:

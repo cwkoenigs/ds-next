@@ -1,5 +1,6 @@
 """Accepted code blocks: added deterministically, tracked in the manifest, updated through reconcile."""
 import asyncio
+import os
 import subprocess
 import sys
 import tomllib
@@ -31,7 +32,7 @@ def test_add_block_copies_code_tests_requirements_and_records_it(repo, canon):
     r = reconcile.check(repo, canon)
     assert r.ok and r.blocks == ["block-demo v1"] and not r.pending
     run = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_demo_mod.py"],
-                         cwd=repo, env={"PYTHONPATH": str(repo / "src")}, capture_output=True, text=True, check=False)
+                         cwd=repo, env={**os.environ, "PYTHONPATH": str(repo / "src")}, capture_output=True, text=True, check=False)
     assert run.returncode == 0, run.stdout                      # the block's own test passes in the repo
 
 

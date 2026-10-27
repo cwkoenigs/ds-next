@@ -25,6 +25,8 @@ def drive(coro_fn, keys: str):
             task = asyncio.ensure_future(run())
             await asyncio.sleep(0.1)
             for ch in keys:                       # one key at a time, as a person types
+                if ch == "\t":                   # and pauses before tab: completions arrive from a thread
+                    await asyncio.sleep(0.2)
                 inp.send_text(ch)
                 await asyncio.sleep(0.01)
             return await asyncio.wait_for(task, 3)

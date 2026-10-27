@@ -29,11 +29,20 @@ def _err(what: str, fix: str = "") -> None:
         out.print(line)
 
 
+def utf8_pipes() -> None:
+    """✓ ⚠ ✗ would crash a stream whose encoding is a Windows code page, as a pipe's is (a git hook, an
+    IDE): a stream that is not a console writes UTF-8, and replaces what it cannot."""
+    for s in (sys.stdout, sys.stderr):
+        if hasattr(s, "reconfigure") and not s.isatty() and (s.encoding or "").lower().replace("-", "") != "utf8":
+            s.reconfigure(encoding="utf-8", errors="replace")
+
+
 @app.callback()
 def main(ctx: typer.Context,
          model: str | None = typer.Option(None, "--model", "-m", help="Cortex model"),
          connection: str | None = typer.Option(None, "--connection", "-c", help="Snowflake connection"),
          effort: str = typer.Option("low", "--effort", help="thinking effort: minimal, low, medium, high")):
+    utf8_pipes()
     if ctx.invoked_subcommand is None:
         from .ui import main as repl
         repl(Path.cwd(), model, connection, effort)

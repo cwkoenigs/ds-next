@@ -40,7 +40,7 @@ def test_lines_follow_the_grid():
 
 
 def test_plain_mode_keeps_glyphs_and_drops_colour():
-    con = Console(theme=S.theme(color=False), file=open(os.devnull, "w"), record=True, width=80)  # noqa: SIM115
+    con = Console(theme=S.theme(color=False), file=open(os.devnull, "w", encoding="utf-8"), record=True, width=80)  # noqa: SIM115
     con.print(S.outcome("warn", "r", "1 pending"))
     assert con.export_text() == "⚠ r  1 pending\n"
     assert S.theme(color=False).styles["err"].color is None

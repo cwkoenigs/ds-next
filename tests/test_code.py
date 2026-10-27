@@ -1,6 +1,7 @@
 """The function-level code library: search, cut a module down to what is asked for, add it."""
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -156,7 +157,7 @@ def test_add_cuts_the_module_merges_later_adds_and_records_symbols(repo, lib_can
     assert m["blocks"]["block-lib"]["symbols"] == ["to_literal", "words"] and m["blocks"]["block-lib"]["version"] == 2
     assert reconcile.check(repo, lib_canon).ok
     run = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_lib.py"],
-                         cwd=repo, env={"PYTHONPATH": str(repo / "src")}, capture_output=True, text=True, check=False)
+                         cwd=repo, env={**os.environ, "PYTHONPATH": str(repo / "src")}, capture_output=True, text=True, check=False)
     assert run.returncode == 0 and "2 passed" in run.stdout, run.stdout
     log = [json.loads(ln) for ln in (tmp_path / "state" / "usage.jsonl").read_text().splitlines()]
     assert [e["ids"] for e in log] == [["block-lib:to_literal"], ["block-lib:words"]]
