@@ -1,5 +1,6 @@
 """Codex as the third agent: the client against a stand-in app-server (tests/fake_codex.py), the pieces
-on their own, and, where Codex is installed, the real app-server with a stand-in model."""
+on their own, and, where Codex is installed, the real app-server with a stand-in model. The client
+speaks claude-agent-sdk's types (`types` here), whichever agent `sdk` found on this machine."""
 import asyncio
 import json
 import shutil
@@ -9,6 +10,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import claude_agent_sdk as types
 import pytest
 
 from ds_next import agent, codex, sdk, ui
@@ -86,7 +88,7 @@ def test_a_no_declines_and_lets_the_model_ask(fake, tmp_path, canon, skills):
     ask, _ = answering(sdk.PermissionResultDeny(message="The user declined this call. Ask what to do instead."))
     msgs = turn(agent.Agent(tmp_path, ask_permission=ask, canon=canon, skills=skills))
     assert fake("reply")[-1]["result"] == {"decision": "decline"}
-    declined = [b for m in msgs if isinstance(m, sdk.UserMessage) for b in m.content][-1]
+    declined = [b for m in msgs if isinstance(m, types.UserMessage) for b in m.content][-1]
     assert declined.is_error and declined.content == "declined"
     assert msgs[-1].is_error is False          # the turn stopped there; nothing failed
 
@@ -101,7 +103,7 @@ def test_a_turn_codex_never_confirms_ends_the_session(fake, monkeypatch, tmp_pat
     monkeypatch.setenv("FAKE_CODEX_SILENT_TURN", "1")
     monkeypatch.setattr(codex, "REQUEST_TIMEOUT", 0.5)
     a = agent.Agent(tmp_path, canon=canon, skills=skills)
-    with pytest.raises(sdk.SDKError, match="longer than 0.5s to answer turn/start"):
+    with pytest.raises(types.ClaudeSDKError, match="longer than 0.5s to answer turn/start"):
         turn(a)
     assert not a.connected
 
@@ -164,7 +166,7 @@ def test_the_pieces():
 def test_where_codex_is_found(monkeypatch, tmp_path):
     monkeypatch.delenv("CODEX_CLI_PATH", raising=False)
     monkeypatch.setattr(codex.shutil, "which", lambda name: None)
-    with pytest.raises(sdk.CLINotFoundError, match="Codex CLI not found"):
+    with pytest.raises(types.CLINotFoundError, match="Codex CLI not found"):
         codex.command()
     shim = tmp_path / "codex.CMD"
     shim.write_text("")
@@ -232,7 +234,7 @@ def real_codex(monkeypatch, tmp_path, as_codex):
 def test_the_real_app_server_calls_a_ds_tool_without_asking(real_codex, tmp_path, canon, skills):
     ask, asked = answering(sdk.PermissionResultAllow())
     msgs, outputs = real_codex({"name": "canon_list", "arguments": {}}, agent.Agent(tmp_path, ask_permission=ask, canon=canon, skills=skills))
-    calls = [b for m in msgs if isinstance(m, sdk.AssistantMessage) for b in m.content if isinstance(b, sdk.ToolUseBlock)]
+    calls = [b for m in msgs if isinstance(m, types.AssistantMessage) for b in m.content if isinstance(b, types.ToolUseBlock)]
     assert [c.name for c in calls] == ["mcp__ds__canon_list"]
     assert asked == [] and "testing" in outputs[0]           # what the model got back: the fixture canon
     assert msgs[-1].subtype == "success" and msgs[-1].usage == {"total_tokens": 120}
