@@ -4,7 +4,7 @@ import os
 from rich.console import Console
 from rich.text import Text
 
-from ds_next import ui_style as S
+from ds_cli_design import ui_style as S
 
 
 def width_of(line: Text) -> int:

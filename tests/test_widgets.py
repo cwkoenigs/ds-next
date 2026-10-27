@@ -135,7 +135,7 @@ def test_prompt_frame_is_exact():
     assert lines[0].startswith("╭─") and lines[0].endswith(" New session ──╮"), lines[0]
     assert lines[1].startswith("│ › /new feed-model") and lines[1].endswith("│")
     assert lines[2] == "╰" + "─" * 58 + "╯"
-    from ds_next import ui_style as S
+    from ds_cli_design import ui_style as S
     assert lines == [t.plain for t in S.prompt_box("New session", "/new feed-model", 60)], "live and static agree"
 
 

@@ -103,3 +103,25 @@ canon as standards; this file links them with `[[id]]` rather than restating the
   whole turn. Codex has not yet been run against a real model, nor on Windows.
 - **Review date:** each Codex upgrade.
 
+## local-005: The look comes from ds-cli-design
+
+- **Status:** Accepted
+- **Date:** 2026-10-27
+- **Context:** ds-next kept its own `ui_style.py`; ds-cli-design, the terminal design system as a
+  library (atlas uses it), held a copy from the design export, and rule-cli a third in TypeScript.
+  The owner wants one design system. Its values were already equal; ds-next's banner and prompt box
+  were the newer look.
+- **Options considered:**
+  1. **Keep ds-next's copy**: every change to the look made twice, and atlas drawn from an older one.
+  2. **ds-cli-design as the one copy, ds-next imports it**: chosen. ds-cli-design 1.1.0 took ds-next's
+     banner and prompt box; drawn from it, ds-next's banner, box, theme and prompt_toolkit styles are
+     identical, span for span.
+- **Decision:** ds-next depends on `ds-cli-design @ git+https://github.com/cwkoenigs/ds-cli-design@v1.1.0`
+  and imports `ds_cli_design.ui_style`; `src/ds_next/ui_style.py` is gone. A change to the look is made
+  in ds-cli-design, released as a tag, and taken here by moving the pin.
+- **Consequences:** ds-cli-design is a private repo: installing ds-next needs a GitHub login for git,
+  and CI needs the `DS_CLI_DESIGN_TOKEN` secret, unless ds-cli-design is made public.
+- **Validation:** the whole suite on the library's style; banner, prompt box, theme and
+  prompt_toolkit styles compared span for span with the deleted copy.
+- **Review date:** the next design export.
+

@@ -11,6 +11,9 @@ dependencies = [
     "claude-agent-sdk>=0.2",
     # MCP itself: codex.py serves the terminal's tools to Codex through it (claude-agent-sdk needs it too).
     "mcp>=1.0,<2",
+    # The terminal design system: roles, glyphs, grid, frames, banner, the prompt box. One copy, shared
+    # with atlas; pinned to a release tag.
+    "ds-cli-design @ git+https://github.com/cwkoenigs/ds-cli-design@v1.1.0",
     "rich>=13",
     "prompt-toolkit>=3.0.40",
     "typer>=0.12",
@@ -39,3 +42,7 @@ line-length = 120
 [tool.ruff.lint.per-file-ignores]
 # typer declares options as argument defaults; that is the library's idiom
 "src/ds_next/cli.py" = ["B008"]
+
+[tool.hatch.metadata]
+# ds-cli-design comes from its git tag (dependencies above), which pip and uv both install.
+allow-direct-references = true

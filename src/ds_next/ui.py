@@ -30,7 +30,7 @@ from rich.markdown import Markdown
 from rich.text import Text
 
 from . import __version__, docs, reconcile, scaffold, sdk, widgets
-from . import ui_style as S
+from ds_cli_design import ui_style as S
 from .agent import SERVER, Agent, TurnStalled
 from .kb import Canon, Scaffold, Skills, docs_shell_path
 from .sdk import (
@@ -46,10 +46,10 @@ from .sdk import (
     ToolUseBlock,
     UserMessage,
 )
-from .ui_style import G
+from ds_cli_design.ui_style import G
 from .widgets import Field, form, prompt_line, resize_safe
 
-# Everything printed goes through ui_style: the roles, glyphs and grid of the terminal design
+# Everything printed goes through ui_style (ds-cli-design's, the one terminal design system): the roles, glyphs and grid of the terminal design
 # system ([[terminal-design]]). One rail per turn; a frame means "needs you"; nothing reflows.
 COMMANDS = {
     "/new": "start a project from a canon scaffold: /new, /new python, /new python cli <name>",

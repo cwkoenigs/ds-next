@@ -46,6 +46,10 @@ uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -e ".[test]"
 DS_LIVE=1 .venv/bin/pytest -q -m live    # one end-to-end run through Cortex Code
 ```
 
+The install fetches [ds-cli-design](https://github.com/cwkoenigs/ds-cli-design), the terminal design
+system ds-next draws with, from its git tag: a private repo, so git needs your GitHub login
+(`gh auth setup-git` once).
+
 ## The terminal
 
 ```
