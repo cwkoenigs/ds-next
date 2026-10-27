@@ -102,7 +102,9 @@ The agent's tools, served in-process: `canon_list`, `canon_read`, `skills_list`,
 only read. `scaffold_project` and `capture` write, as do Cortex's own Bash and file edits, so
 they ask unless the form already approved them. An approval shows the whole request, asks one
 question at a time even when Cortex makes parallel calls, and takes only an explicit `y`, `a` or
-`n`: Enter alone asks again.
+`n`: Enter alone asks again. No settings file skips the question: an allow rule in your Claude
+settings still asks, and before a Cortex session starts in a repo whose own settings define hooks,
+ds-next shows each hook's command and asks.
 
 ## Code intelligence
 
@@ -153,6 +155,13 @@ and a pre-push hook. A CLI is also tagged `package`, so it inherits package stan
   so a fresh install of it picks up `mcp` 2 and `create_sdk_mcp_server` raises `AttributeError`.
 - `allowed_tools` is exclusive in Cortex: every tool not listed is blocked before `can_use_tool` is
   asked, Bash included. ds-next sets no allowlist and approves read-only tools in its callback.
+- Both agents run a repo's own hooks from its settings, with nothing asked (checked live): Claude
+  Code from `.claude/settings.json`, Cortex Code from `.cortex/` and `.claude/settings.json`. Claude's
+  are switched off (`disableAllHooks` through `settings`); Cortex has no switch, so ds-next asks
+  first (local-001).
+- An allow rule in the person's own Claude settings skips `can_use_tool` (checked offline against
+  the real CLI). A `PreToolUse` callback that answers "ask" sends the call back to it; settings-file
+  hooks being off does not stop it (local-001).
 - Cortex drops the error flag of in-process tool results, whether it is sent as `is_error` or
   `isError` (checked live). ds-next therefore starts every error result with `ERROR:`, which the
   model reads and the terminal colours red.

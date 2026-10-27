@@ -290,6 +290,24 @@ def install_hook(repo: Path) -> str | None:
     return None
 
 
+def owned_files(prior: dict, targets: dict[str, Path], package: str, module: str) -> set[str]:
+    """The files a block wrote into this repo before, which an update may replace: what its manifest
+    table lists, or, for a table written before tables listed them, its module and the tests that
+    import it, as a block's own tests do. Anything else in the way is someone else's."""
+    if isinstance(prior.get("files"), list):
+        return {str(f) for f in prior["files"]}
+    imports = re.compile(rf"^\s*(?:from\s+{re.escape(package)}\.{re.escape(module)}\s+import\b|import\s+{re.escape(package)}\.{re.escape(module)}\b)",
+                         re.MULTILINE)
+    owned = {str(prior.get("module") or f"src/{package}/{module}.py")}
+    for rel, t in targets.items():
+        try:
+            if t.is_file() and imports.search(t.read_text(errors="replace")):
+                owned.add(rel)
+        except OSError:
+            pass
+    return owned
+
+
 def _inside(dest: Path, rel: str) -> Path:
     """The path for rel under dest, refusing anything that would land elsewhere or pass
     through a symbolic link."""
@@ -377,27 +395,33 @@ def add_block(repo: Path, bid: str, canon: Canon | None = None, by: str | None =
     manifest_path = repo / ".ds" / "manifest.toml"
     if not manifest_path.is_file():
         raise ValueError(f"{repo} has no .ds/manifest.toml; create it with ds-next new first")
+    # Both are rewritten after the code is: refuse a link now, before anything is written, so what
+    # the person approved lands in this repo and nowhere else.
+    _inside(repo, ".ds/manifest.toml")
+    _inside(repo, "pyproject.toml")
     manifest_text = manifest_path.read_text()
     manifest = tomllib.loads(manifest_text)
     package = str(manifest.get("repo", {}).get("name", "")).replace("-", "_")
     if not package or not (repo / "src" / package).is_dir():
         raise ValueError(f"{repo} has no src/{package}/ package to add the block to")
-    have = manifest.get("blocks", {}).get(bid, {}).get("version")
+    prior = manifest.get("blocks", {}).get(bid)
+    have = prior.get("version") if isinstance(prior, dict) else None
     if have == b.version:
         return {"block": bid, "version": b.version, "files": [], "requires": [], "manual": [],
                 "note": "already at this version"}
     files = canon.block_files(bid, package)
     targets = {rel: _inside(repo, rel) for rel in files}
-    if have is None:
-        clash = [rel for rel, t in targets.items() if t.exists()]
-        if clash:
-            raise FileExistsError(f"not added: {', '.join(clash)} already exist and were not written by {bid}")
+    owned = owned_files(prior, targets, package, b.module) if isinstance(prior, dict) else set()
+    clash = [rel for rel, t in targets.items() if t.exists() and rel not in owned]
+    if clash:
+        verb = "updated" if have is not None else "added"
+        raise FileExistsError(f"not {verb}: {', '.join(clash)} already exist and were not written by {bid}")
     for rel, text in files.items():
         targets[rel].parent.mkdir(parents=True, exist_ok=True)
         targets[rel].write_text(text)
     added: list[str] = []
     manual: list[str] = []
-    pyproject = repo / "pyproject.toml"
+    pyproject = _inside(repo, "pyproject.toml")
     for key, wanted in (("dependencies", list(b.requires)), ("dev", list(b.test_requires))):
         if not wanted:
             continue
@@ -412,7 +436,8 @@ def add_block(repo: Path, bid: str, canon: Canon | None = None, by: str | None =
         added += got
     today = today or dt.date.today()
     table = (f"[blocks.{bid}]\nversion = {b.version}\nby = {json_str(by or _git_user())}\n"
-             f'on = "{today}"\nmodule = {json_str(f"src/{package}/{b.module}.py")}\n')
+             f'on = "{today}"\nmodule = {json_str(f"src/{package}/{b.module}.py")}\n'
+             f"files = [{', '.join(json_str(f) for f in sorted(files))}]\n")
     existing = re.compile(rf"^\[blocks\.{re.escape(bid)}\]\n(?:(?!\[).*\n?)*", re.MULTILINE)
     if existing.search(manifest_text):
         manifest_text = existing.sub(table + "\n", manifest_text, count=1)

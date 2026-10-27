@@ -89,3 +89,53 @@ def test_requirements_that_cannot_be_added_are_reported(repo, canon):
     (repo / "pyproject.toml").write_text('[project]\nname = "demo-cli"\ndependencies = [\n  "typer",\n]\n')
     done = scaffold.add_block(repo, "block-demo", canon)
     assert done["requires"] == [] and done["manual"] == ["rich>=13 (dependencies)", "pyyaml>=6 (dev)"]
+
+
+# -- an update replaces only what the block wrote; nothing goes through a link (rule-cli's review)
+
+def test_an_update_never_replaces_a_file_the_block_did_not_write(repo, tmp_path):
+    old = make_canon(tmp_path / "c1")
+    scaffold.add_block(repo, "block-demo", old)
+    manifest = repo / ".ds/manifest.toml"
+    text = manifest.read_text()
+    assert 'files = ["src/demo_cli/demo_mod.py", "tests/test_demo_mod.py"]' in text
+    # as if v1 had written only its module, and the tests file were the person's own
+    manifest.write_text(text.replace('files = ["src/demo_cli/demo_mod.py", "tests/test_demo_mod.py"]', 'files = ["src/demo_cli/demo_mod.py"]'))
+    (repo / "tests/test_demo_mod.py").write_text("mine = True\n")
+    newer = make_canon(tmp_path / "c2", bump={"block-demo": 2})
+    with pytest.raises(FileExistsError, match=r"not updated: tests/test_demo_mod.py already exist and were not written by block-demo"):
+        scaffold.add_block(repo, "block-demo", newer)
+    assert (repo / "tests/test_demo_mod.py").read_text() == "mine = True\n"
+    assert (repo / "src/demo_cli/demo_mod.py").read_text().startswith("VERSION = 1")     # refused before anything was written
+
+
+@pytest.mark.parametrize(("tests_file", "updates"), [(None, True), ("mine = True\n", False)])
+def test_a_table_from_before_files_were_listed_trusts_its_module_and_the_tests_that_import_it(repo, tmp_path, tests_file, updates):
+    scaffold.add_block(repo, "block-demo", make_canon(tmp_path / "c1"))
+    manifest = repo / ".ds/manifest.toml"
+    manifest.write_text("\n".join(line for line in manifest.read_text().split("\n") if not line.startswith("files = ")))
+    if tests_file:
+        (repo / "tests/test_demo_mod.py").write_text(tests_file)
+    newer = make_canon(tmp_path / "c2", bump={"block-demo": 2})
+    if updates:
+        assert scaffold.add_block(repo, "block-demo", newer)["note"] == "updated"
+    else:
+        with pytest.raises(FileExistsError, match="not updated: tests/test_demo_mod.py"):
+            scaffold.add_block(repo, "block-demo", newer)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symbolic links need privileges on Windows")
+@pytest.mark.parametrize("rel", ["pyproject.toml", ".ds/manifest.toml"])
+def test_no_metadata_is_written_through_a_link(repo, canon, tmp_path, rel):
+    from ds_next import code
+    outside = tmp_path / "outside.toml"
+    outside.write_text((repo / rel).read_text())
+    (repo / rel).unlink()
+    (repo / rel).symlink_to(outside)
+    before = outside.read_text()
+    with pytest.raises(ValueError, match=r"refusing to write .* is a symbolic link"):
+        scaffold.add_block(repo, "block-demo", canon)
+    with pytest.raises(ValueError, match=r"refusing to write .* is a symbolic link"):
+        code.add(repo, ["block-demo:shout"], canon)
+    assert outside.read_text() == before
+    assert not (repo / "tests/test_demo_mod.py").exists()
