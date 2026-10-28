@@ -79,6 +79,14 @@ def test_capture_writes_a_canon_shaped_draft(tmp_path, canon, skills):
     assert "status: proposed" in draft.read_text() and "applies_to: [\"*\"]" in draft.read_text()
 
 
+def test_every_tool_is_read_only_or_a_listed_write(tmp_path, canon, skills):
+    tools = agent.tools(canon, skills, tmp_path)
+    names = {t.name for t in tools}
+    assert "adopt_repo" in names and "mcp__ds__adopt_repo" not in agent.READ_ONLY_IDS
+    assert names == set(agent.READ_ONLY) | set(agent.WRITES)     # every tool is read-only or asks
+    assert not set(agent.READ_ONLY) & set(agent.WRITES)
+
+
 def test_system_prompt_names_the_parts(tmp_path, canon, skills):
     p = agent.system_prompt(tmp_path, canon, skills)
     assert "4 versioned standards" in p and "3 project scaffolds" in p and "2 procedures" in p

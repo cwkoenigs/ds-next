@@ -228,7 +228,7 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
         effort: str = typer.Option("low", "--effort", help="thinking effort: minimal, low, medium, high, max"),
         model: str | None = typer.Option(None, "--model", "-m")):
     """One turn through the agent (Claude Code or Cortex Code), printed the way the terminal prints it."""
-    from .agent import Agent, TurnStalled
+    from .agent import WRITES, Agent, TurnStalled
     from .sdk import PermissionResultAllow, PermissionResultDeny
     from .ui import describe_permission, render
 
@@ -237,7 +237,7 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
 
     async def permit(tool_name, inp, ctx):
         title, detail = describe_permission(tool_name, inp)
-        if yes_all or (yes and title in ("scaffold_project", "block_add", "code_add", "capture")):
+        if yes_all or (yes and title in WRITES):
             if yes_all:
                 out.print(S.result(f"approved by --yes-all: {title} {detail.splitlines()[0][:60] if detail else ''}"))
             return PermissionResultAllow()
