@@ -41,6 +41,8 @@ from claude_agent_sdk import ClaudeSDKError as SDKError
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 
+from . import __version__
+
 Obj = dict[str, Any]
 REQUEST_TIMEOUT = 60.0        # seconds a request waits for Codex; the tests set less
 
@@ -365,7 +367,7 @@ class CodexClient:
         self._drain = asyncio.ensure_future(self._read_stderr())
         try:
             tools = await self._serve()
-            await self._rpc.request("initialize", {"clientInfo": {"name": "ds-next", "title": "ds-next", "version": "0.1.0"},
+            await self._rpc.request("initialize", {"clientInfo": {"name": "ds-next", "title": "ds-next", "version": __version__},
                                                    "capabilities": {"experimentalApi": True, "requestAttestation": False}})
             await self._rpc.notify("initialized")
             # The user's own Codex config may register the same servers (`ds-next setup` adds `ds`);
