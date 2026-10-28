@@ -157,3 +157,26 @@ canon as standards; this file links them with `[[id]]` rather than restating the
 - **Validation:** the whole suite on canon-lib 0.2.0, installed from the tag; `canon_lib_source` against
   a checkout with and without an origin and the tag.
 - **Review date:** the next canon-lib release.
+
+## local-007: One file per machine says which world it is in
+
+- **Status:** Accepted
+- **Date:** 2026-10-28
+- **Context:** What differs between the owner's machines and a work machine (the git host, the group
+  the team's repos live under, how to authenticate) was spread out: canon's `install.sh` worked it
+  out and kept it only in the clones' remotes, and `/so-capture` read a file of its own
+  (`~/.config/so-capture/config.toml`) that could only describe GitLab and existed on no machine.
+  The owner asked for one config to fill out per world. `set_default_agent` also rewrote
+  `~/.ds/config.toml` keeping top-level values only, so any table in it was lost on the next setup.
+- **Options considered:** a YAML file of its own (a second format beside the TOML ds-next and Codex
+  already use); `~/.config/so-capture` extended (one skill's file for what the whole system needs);
+  `~/.ds/config.toml`, the file ds-next already keeps per machine: chosen.
+- **Decision:** `~/.ds/config.toml` holds `agent`, `[world]` (`host`, `group`, `token_env`) and
+  `[capture]` (`repo`, `branch`, `dir`). canon's `install.sh` writes `[world]` and `[capture]` when it
+  has settled the team host and the file has no `[world]` yet; `/so-capture` reads them, falling back
+  to the canon checkout's remote. `set_default_agent` changes only the `agent` line.
+- **Consequences:** `ds-next setup` no longer loses a table; a config that is not TOML is kept as
+  `config.toml.bak`. Nothing in ds-next reads `[world]` yet.
+- **Validation:** `tests/test_setup.py`: the tables survive two setups and the agent line is never
+  duplicated (both new tests fail on the old writer); a broken file is kept aside.
+- **Review date:** when a second tool needs `[world]`.

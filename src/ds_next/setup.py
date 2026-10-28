@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -36,16 +37,31 @@ def config_path() -> Path:
 
 
 def set_default_agent(name: str) -> Path:
-    """Record which agent the terminal runs its turns through (sdk.py reads it)."""
+    """Record which agent the terminal runs its turns through (sdk.py reads it). Only the top-level
+    `agent` line changes: every other key, table and comment in the file stays, so the machine's
+    `[world]` and `[capture]` (written by canon's install.sh, read by so-capture) survive a setup.
+    A file that is not TOML is kept beside it as config.toml.bak and started fresh."""
     import tomllib
     path = config_path()
+    text = path.read_text() if path.is_file() else ""
     try:
-        cfg = tomllib.loads(path.read_text()) if path.is_file() else {}
+        tomllib.loads(text)
     except ValueError:
-        cfg = {}
-    cfg["agent"] = name
+        path.with_name("config.toml.bak").write_text(text)
+        text = ""
+    line = f"agent = {json.dumps(name)}"
+    lines = text.splitlines()
+    top = next((i for i, ln in enumerate(lines) if ln.lstrip().startswith("[")), len(lines))
+    at = next((i for i in range(top) if re.match(r"\s*agent\s*=", lines[i])), None)
+    if at is not None:
+        lines[at] = line
+    else:                                   # after the last top-level key, before the first table
+        pos = top
+        while pos > 0 and not lines[pos - 1].strip():
+            pos -= 1
+        lines[pos:pos] = [line] + ([""] if pos == top < len(lines) else [])
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(f"{k} = {json.dumps(v)}\n" for k, v in cfg.items() if isinstance(v, (str, int, float, bool))))
+    path.write_text("\n".join(lines) + "\n")
     return path
 
 

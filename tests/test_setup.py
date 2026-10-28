@@ -59,6 +59,32 @@ def test_set_default_agent_keeps_other_keys(tmp_path, monkeypatch):
     assert path.read_text() == 'theme = "light"\nagent = "claude"\n'
 
 
+def test_set_default_agent_keeps_the_world_tables(tmp_path, monkeypatch):
+    import tomllib
+    monkeypatch.setattr(setup.Path, "home", lambda: tmp_path)
+    (tmp_path / ".ds").mkdir()
+    cfg = tmp_path / ".ds" / "config.toml"
+    world = ('# this machine\n\n[world]\nhost = "gitlab"\ngroup = "https://gitlab.example/ds"\n'
+             'token_env = "GITLAB_TOKEN"\n\n[capture]\nrepo = "canon"\n')
+    cfg.write_text(world)
+    setup.set_default_agent("cortex")                  # no agent yet: it goes above the first table
+    data = tomllib.loads(cfg.read_text())
+    assert data["agent"] == "cortex" and data["world"]["host"] == "gitlab" and data["capture"]["repo"] == "canon"
+    assert cfg.read_text().startswith("# this machine\nagent = \"cortex\"\n\n[world]")
+    setup.set_default_agent("codex")                   # an agent already: only that line changes
+    assert cfg.read_text().count("agent =") == 1 and tomllib.loads(cfg.read_text())["agent"] == "codex"
+    assert cfg.read_text().endswith('[capture]\nrepo = "canon"\n')
+
+
+def test_set_default_agent_keeps_a_broken_file_aside(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.Path, "home", lambda: tmp_path)
+    (tmp_path / ".ds").mkdir()
+    (tmp_path / ".ds" / "config.toml").write_text("not = [toml\n")
+    path = setup.set_default_agent("claude")
+    assert path.read_text() == 'agent = "claude"\n'
+    assert (tmp_path / ".ds" / "config.toml.bak").read_text() == "not = [toml\n"
+
+
 def test_setup_claude_registers_links_and_allows(tmp_path, monkeypatch):
     import shutil
     calls: list[list[str]] = []
