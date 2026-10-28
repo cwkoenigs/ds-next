@@ -105,7 +105,7 @@ canon as standards; this file links them with `[[id]]` rather than restating the
 
 ## local-005: The look comes from ds-cli-design
 
-- **Status:** Accepted
+- **Status:** Superseded by local-006 (2026-10-28)
 - **Date:** 2026-10-27
 - **Context:** ds-next kept its own `ui_style.py`; ds-cli-design, the terminal design system as a
   library (atlas uses it), held a copy from the design export, and rule-cli a third in TypeScript.
@@ -126,3 +126,34 @@ canon as standards; this file links them with `[[id]]` rather than restating the
   prompt_toolkit styles compared span for span with the deleted copy.
 - **Review date:** the next design export.
 
+## local-006: The look comes from canon-lib
+
+- **Status:** Accepted
+- **Date:** 2026-10-28
+- **Context:** local-005 made ds-cli-design the one copy of the look without weighing the canon's
+  own path for it, released on 2026-10-20 and never replaced by a decision: the accepted standard
+  [[terminal-design]], `block-ui-style` and `block-tui-widgets`, built into `canon_lib.ui_style` and
+  `canon_lib.widgets`, which the `python-cli` scaffold imports. canon-lib is how accepted code reaches
+  repos ([[adr-001]]), and the owner's split is that canon-lib carries the code projects import while
+  the MCP carries the knowledge. Canon v5 of `ui_style` was ds-next's own copy, so ds-cli-design 1.1.0
+  differed from it only in `banner(name=...)`; `src/ds_next/widgets.py` was canon's v7 with its two
+  import lines changed.
+- **Options considered:**
+  1. **Keep ds-cli-design as the one copy**: a second package of accepted code beside canon-lib,
+     against the owner's "one package of the canon (canon-lib) at most".
+  2. **canon-lib, the `tui` extra, pinned to a tag**: chosen. canon took `banner(name=...)` (block-ui-style
+     v6) and atlas's `browse` (block-tui-picker, proposed) and released canon-lib 0.2.0 as the tag
+     `canon-lib-v0.2.0` (cwkoenigs/canon#1).
+- **Decision:** ds-next depends on `canon-lib[tui] @ git+https://github.com/cwkoenigs/canon@canon-lib-v0.2.0#subdirectory=lib`
+  and imports `canon_lib.ui_style` and `canon_lib.widgets`; its copy of `widgets.py` and the copy of
+  canon's `ui_style` tests are gone. A change to the look is made in the canon's blocks, released as a
+  canon-lib tag, and taken here by moving the pin. ds-cli-design keeps the design exports and checks
+  `tokens.json` against the canon's code.
+- **Consequences:** ds-next and atlas draw from the same code as every repo made from `python-cli`.
+  New repos also stop pointing at one person's checkout: `scaffold.canon_lib_source` gives them
+  canon-lib from git at its tag, from the canon's own origin (the team's copy at work), and falls back
+  to the path only where the tag is missing. The agent is told to import canon-lib first; `code_add`
+  and `block_add` are for a repo that cannot take the dependency (adr-001's second door).
+- **Validation:** the whole suite on canon-lib 0.2.0, installed from the tag; `canon_lib_source` against
+  a checkout with and without an origin and the tag.
+- **Review date:** the next canon-lib release.

@@ -69,6 +69,29 @@ def _git_user() -> str:
         return "unknown"
 
 
+def canon_lib_source(canon_root: Path) -> str:
+    """The `[tool.uv.sources]` line a new repo gets for canon-lib. From git at the release tag
+    (`canon-lib-v<version>`) when the canon checkout has an origin and that tag, so the repo installs
+    on a teammate's machine, from the team's copy at work; otherwise the checkout's own path, which
+    works only on the machine that made the repo."""
+    lib = canon_root / "lib"
+    path = f"canon-lib = {{ path = {json_str(str(lib))}, editable = true }}"
+    try:
+        tag = "canon-lib-v" + tomllib.loads((lib / "pyproject.toml").read_text())["project"]["version"]
+        git = ["git", "-C", str(canon_root)]
+        url = subprocess.run([*git, "remote", "get-url", "origin"], capture_output=True, text=True,
+                             check=False).stdout.strip()
+        tagged = subprocess.run([*git, "rev-parse", "-q", "--verify", f"refs/tags/{tag}"],
+                                capture_output=True, check=False).returncode == 0
+    except (OSError, ValueError, KeyError, TypeError):
+        return path
+    if not (url and tagged):
+        return path
+    if m := re.fullmatch(r"([^@/:]+@[^:/]+):(.+)", url):   # git@host:group/canon.git, which uv does not read
+        url = f"ssh://{m.group(1)}/{m.group(2)}"
+    return f'canon-lib = {{ git = {json_str(url)}, tag = {json_str(tag)}, subdirectory = "lib" }}'
+
+
 @dataclass
 class Answers:
     name: str
@@ -176,7 +199,7 @@ uv sync
 - Test: `{a.test_cmd}`
 - Lint: `{a.lint_cmd}`
 - Before changing anything, read `.ds/manifest.toml`: it says which standards are in force here.
-{f"- Accepted code: `canon-lib` is a dependency of this repo. Its modules are listed in `{lib / 'src' / 'canon_lib' / '__init__.py'}`; import from it before writing code of your own, and never copy or edit it here.{chr(10)}" if has_lib else ""}- The team's knowledge base is served by `ds-next mcp` (canon_list, canon_read, code_search, code_get, code_add) for any agent that can reach it.
+{f"- Accepted code: `canon-lib` is a dependency of this repo. Its docstring lists the modules (`uv run python -c 'import canon_lib; print(canon_lib.__doc__)'`); import from it before writing code of your own, and never copy or edit it here.{chr(10)}" if has_lib else ""}- The team's knowledge base is served by `ds-next mcp` (canon_list, canon_read, code_search, code_get, code_add) for any agent that can reach it.
 - The `code` tools (`ds-code mcp`; ds-next registers them when ds-code is installed) answer from the
   language servers: find_symbol and references before changing a symbol, change_impact before finishing.
 
@@ -228,8 +251,7 @@ None yet.
         "purpose_json": json_str(a.purpose.strip()), "test_cmd": a.test_cmd, "lint_cmd": a.lint_cmd,
         "test_cmd_json": json_str(a.test_cmd), "lint_cmd_json": json_str(a.lint_cmd),
         "canon_lib_dep": '"canon-lib"' if has_lib else "",
-        "canon_lib_source": (f"\n[tool.uv.sources]\ncanon-lib = {{ path = {json_str(str(lib))}, editable = true }}\n"
-                             if has_lib else "")}))
+        "canon_lib_source": f"\n[tool.uv.sources]\n{canon_lib_source(canon.root)}\n" if has_lib else ""}))
     return files
 
 
