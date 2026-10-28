@@ -336,8 +336,9 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
                 continue
         else:
             return _text(f"not written: 99 drafts already named {slug}", error=True)
-        return _text(f"draft at {path}. To publish: open a canon merge request with this file "
-                     f"(the so-capture skill does it), then run scripts/build_index.py.")
+        return _text(f"draft at {path}. To publish: /so-capture flush opens a pull request (GitHub) or "
+                     f"merge request (GitLab) in the canon with it, wherever [world] in ~/.ds/config.toml "
+                     f"says the team's repos live.")
 
     return [canon_list, canon_read, skills_list, skill_read, project_status, scaffold_list, scaffold_get,
             scaffold_project, adopt_repo, block_list, block_get, block_add, code_search, code_get, code_add,
