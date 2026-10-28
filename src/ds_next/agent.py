@@ -23,7 +23,7 @@ SERVER = "ds"
 READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status",
              "scaffold_list", "scaffold_get", "block_list", "block_get", "snowflake_search",
              "code_search", "code_get")
-WRITES = ("scaffold_project", "capture")
+WRITES = ("scaffold_project", "adopt_repo", "block_add", "code_add", "capture")
 READ_ONLY_IDS = {f"mcp__{SERVER}__{t}" for t in READ_ONLY}
 
 
