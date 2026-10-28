@@ -386,9 +386,10 @@ Rules:
 - If the user asks for a project in chat instead, propose a complete draft in one message
   (scaffold, name, purpose, and suggested values for the rest), ask for one confirmation, and
   create it the same way. Never ask one question at a time. Never write project files yourself.
-- Before writing code, code_search for accepted code that already does it (one function at a
-  time), code_get to read it, and code_add it rather than writing your own; import it from the
-  package. block_add takes a whole block when you need most of it. Before building anything, read the gotchas
+- Before writing code, use the team's accepted code. Where the repo depends on canon-lib, import it
+  (`from canon_lib.<module> import ...`) instead of writing your own. code_search finds accepted code
+  (one function at a time) and code_get reads it; code_add and block_add copy it into the repo, only
+  for a repo that cannot take the canon-lib dependency. Before building anything, read the gotchas
   (canon_list marks them) whose tags match the work: they are mistakes already made here once.
 - When a skill fits the request, skill_read it and follow it.
 {code_tools(cwd)}

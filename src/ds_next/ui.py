@@ -20,6 +20,10 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from canon_lib import ui_style as S
+from canon_lib import widgets
+from canon_lib.ui_style import G
+from canon_lib.widgets import Field, form, prompt_line, resize_safe
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application import get_app
 from prompt_toolkit.completion import Completer, Completion
@@ -29,8 +33,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
 
-from . import __version__, docs, reconcile, scaffold, sdk, widgets
-from ds_cli_design import ui_style as S
+from . import __version__, docs, reconcile, scaffold, sdk
 from .agent import SERVER, Agent, TurnStalled
 from .kb import Canon, Scaffold, Skills, docs_shell_path
 from .sdk import (
@@ -46,10 +49,8 @@ from .sdk import (
     ToolUseBlock,
     UserMessage,
 )
-from ds_cli_design.ui_style import G
-from .widgets import Field, form, prompt_line, resize_safe
 
-# Everything printed goes through ui_style (ds-cli-design's, the one terminal design system): the roles, glyphs and grid of the terminal design
+# Everything printed goes through ui_style (canon-lib's, the one terminal design system): the roles, glyphs and grid of the terminal design
 # system ([[terminal-design]]). One rail per turn; a frame means "needs you"; nothing reflows.
 COMMANDS = {
     "/new": "start a project from a canon scaffold: /new, /new python, /new python cli <name>",

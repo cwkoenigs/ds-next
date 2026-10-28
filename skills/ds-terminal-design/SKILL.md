@@ -27,9 +27,11 @@ out.print(outcome("ok", "feed-model", "26 adopted · 0 pending"))
 - `outcome`, `labelled`, `hint`, `error` for a flat command (no rail).
 - `agent_lines`, `run`, `result`, `footer`, `status_label` for an agent's turn (one rail).
 - `frame` for anything that needs the user; the picker, form and framed prompt are in
-  `canon_lib.widgets` (`pick`, `form`, `prompt_line`).
-- A new CLI from the `python-cli` project type already does this; in an existing repo,
-  `block_add block-ui-style` (and `block-tui-widgets` for widgets).
+  `canon_lib.widgets` (`pick`, `form`, `prompt_line`), and a filterable list of tens or hundreds in
+  `canon_lib.picker` (`browse`, `Item`).
+- A new CLI from the `python-cli` project type already does this. In an existing repo, depend on
+  `canon-lib[tui]` from the canon's git tag, or `block_add block-ui-style` (and `block-tui-widgets`,
+  `block-tui-picker`) where the repo cannot take the dependency.
 
 ## Content
 

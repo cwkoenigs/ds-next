@@ -46,8 +46,9 @@ uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -e ".[test]"
 DS_LIVE=1 .venv/bin/pytest -q -m live    # one end-to-end run through Cortex Code
 ```
 
-The install fetches [ds-cli-design](https://github.com/cwkoenigs/ds-cli-design), the terminal design
-system ds-next draws with, from its git tag (a public repo: nothing to log in to).
+The install fetches canon-lib, the canon's accepted code and the terminal design system ds-next
+draws with (`canon_lib.ui_style`, `canon_lib.widgets`), from the canon's git tag `canon-lib-v0.2.0`
+(a public repo: nothing to log in to).
 
 ## The terminal
 

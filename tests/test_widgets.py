@@ -1,11 +1,10 @@
 """The picker and the form, driven by real keystrokes through a pipe."""
 import asyncio
 
+from canon_lib.widgets import Field, form, pick, prompt_frame, prompt_line
 from prompt_toolkit.application import create_app_session
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
-
-from ds_next.widgets import Field, form, pick, prompt_frame, prompt_line
 
 
 class _Interrupted(Exception):
@@ -135,17 +134,16 @@ def test_prompt_frame_is_exact():
     assert lines[0].startswith("╭─") and lines[0].endswith(" New session ──╮"), lines[0]
     assert lines[1].startswith("│ › /new feed-model") and lines[1].endswith("│")
     assert lines[2] == "╰" + "─" * 58 + "╯"
-    from ds_cli_design import ui_style as S
+    from canon_lib import ui_style as S
     assert lines == [t.plain for t in S.prompt_box("New session", "/new feed-model", 60)], "live and static agree"
 
 
 def test_resize_clears_screen_and_scrollback_then_repaints():
     """VS Code's terminal re-wraps rows on a column change and shifts the cursor; the only
     redraw that cannot stack is one from a clean screen with the transcript printed again."""
+    from canon_lib import widgets
     from prompt_toolkit.application import Application
     from prompt_toolkit.layout import Layout, Window
-
-    from ds_next import widgets
 
     writes: list[str] = []
 

@@ -8,13 +8,13 @@ import tempfile
 from pathlib import Path
 
 import typer
+from canon_lib import ui_style as S
 from rich.markdown import Markdown
 from rich.text import Text
 
 from . import docs as docs_mod
 from . import reconcile as reconcile_mod
 from . import scaffold
-from ds_cli_design import ui_style as S
 from .kb import Canon, Skills
 
 app = typer.Typer(add_completion=False, invoke_without_command=True,

@@ -1,6 +1,7 @@
 """The deterministic core: knowledge base, scaffold, reconcile."""
 import datetime as dt
 import os
+import subprocess
 import tomllib
 
 import pytest
@@ -144,6 +145,28 @@ def test_new_repo_starts_on_canon_lib_when_the_canon_ships_it(tmp_path, canon, s
     assert (m["canon_lib"], m["canon"]) == (str(canon.root / "lib"), str(canon.root))
     assert "canon_index = " in manifest
     assert "`canon-lib` is a dependency" in files["AGENTS.md"]
+    assert str(canon.root) not in files["AGENTS.md"]       # nothing that only resolves on this machine
+
+
+def test_canon_lib_comes_from_git_at_its_tag_when_the_canon_has_one(tmp_path):
+    root = tmp_path / "canon"
+    (root / "lib").mkdir(parents=True)
+    (root / "lib" / "pyproject.toml").write_text('[project]\nname = "canon-lib"\nversion = "0.2.0"\n')
+    assert "path = " in scaffold.canon_lib_source(root)    # not a git checkout: the path, as before
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                       check=True, capture_output=True)
+    git("init", "-q")
+    git("remote", "add", "origin", "git@gitlab.team.example:ds/canon.git")
+    git("add", "-A")
+    git("commit", "-q", "-m", "c")
+    assert "path = " in scaffold.canon_lib_source(root)    # no release tag yet
+    git("tag", "canon-lib-v0.2.0")
+    line = scaffold.canon_lib_source(root)
+    assert line == ('canon-lib = { git = "ssh://git@gitlab.team.example/ds/canon.git", '
+                    'tag = "canon-lib-v0.2.0", subdirectory = "lib" }')
+    assert tomllib.loads(line)["canon-lib"]["tag"] == "canon-lib-v0.2.0"
 
 
 def test_type_and_outputs_are_recorded(tmp_path, canon, skills):
