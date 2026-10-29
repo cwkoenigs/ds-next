@@ -1,11 +1,18 @@
-"""`ds-next setup`: connect this machine's agents to the knowledge system, idempotently.
+"""`ds-next setup`: connect this machine's agents to the knowledge system, idempotently; `--remove`
+disconnects them again.
 
-For Claude Code, Cortex Code and Codex alike: register the `ds` MCP server and add the /ds-new and
-/ds-terminal-design skills. Claude Code and Cortex Code also allow the read-only ds tools, so reading
-the canon never prompts (Codex has no such list). The five write tools keep prompting: that approval
-is the control point. `--agent claude` (or cortex, or codex) also records the choice in
-~/.ds/config.toml, which is what the terminal then runs its turns through. Every step reports what it
-found and what it changed; --check changes nothing.
+For Claude Code, Cortex Code and Codex alike: register the `ds` MCP server (and `code`, ds-code's,
+when `ds-code` is on PATH), and add the skills: /ds-new and /ds-terminal-design from this checkout,
+and every /so-* procedure from skills-os when that checkout is found. Claude Code and Cortex Code
+also allow the read-only tools of both servers, so reading the canon or the code never prompts
+(Codex has no such list). The five write tools keep prompting: that approval is the control point.
+`--agent claude` (or cortex, or codex) also records the choice in ~/.ds/config.toml, which is what
+the terminal then runs its turns through. Every step reports what it found and what it changed;
+--check changes nothing.
+
+`--remove` is the exact reverse: the servers unregistered, the skills unlinked (only links that point
+into our checkouts), the allow rules dropped. ~/.ds/config.toml stays: canon's uninstall.sh asks about
+it, with the repositories.
 """
 from __future__ import annotations
 
@@ -15,9 +22,12 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 SKILLS = ("ds-new", "ds-terminal-design")
+WRITES_NOTE = "write tools (scaffold_project, adopt_repo, block_add, code_add, capture) still ask: that is the control point"
 
 
 def cortex_home() -> Path:
@@ -76,9 +86,52 @@ def skills_dir() -> Path | None:
     return d if (d / SKILLS[0] / "SKILL.md").is_file() else None
 
 
-def read_only_rules() -> list[str]:
+def skill_dirs() -> list[Path]:
+    """Every skill the agents get: ours, then skills-os's /so-* procedures when that checkout is found."""
+    from . import kb
+    out = []
+    d = skills_dir()
+    if d is not None:
+        out += [d / name for name in SKILLS]
+    s = kb.skills_path()
+    if s is not None:
+        out += sorted(p for p in s.glob("so-*") if (p / "SKILL.md").is_file())
+    return out
+
+
+# --- the servers ---------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Server:
+    name: str
+    argv: tuple[str, ...]          # the command and its arguments, as the agent will start it
+    read_only: tuple[str, ...]     # the tools that never need to ask
+
+    @property
+    def rules(self) -> list[str]:
+        return [f"mcp__{self.name}__{t}" for t in self.read_only]
+
+
+def servers() -> list[Server]:
+    """`ds` always; `code` when ds-code is installed (npm puts `ds-code` on PATH)."""
     from .agent import READ_ONLY, SERVER
-    return [f"mcp__{SERVER}__{t}" for t in READ_ONLY]
+    from .codetools import CODE, CODE_TOOLS, code_command
+    out = [Server(SERVER, (str(ds_next_bin()), "mcp"), READ_ONLY)]
+    c = code_command()
+    if c is not None:
+        out.append(Server(CODE, (*c, "mcp"), CODE_TOOLS))
+    return out
+
+
+def all_rules() -> list[str]:
+    """Every allow rule a setup may ever have written, whether or not ds-code is on PATH now."""
+    from .agent import READ_ONLY, SERVER
+    from .codetools import CODE, CODE_TOOLS
+    return [f"mcp__{SERVER}__{t}" for t in READ_ONLY] + [f"mcp__{CODE}__{t}" for t in CODE_TOOLS]
+
+
+def read_only_rules() -> list[str]:
+    return [r for s in servers() for r in s.rules]
 
 
 def merge_allow(settings: dict, rules: list[str]) -> tuple[dict, list[str]]:
@@ -90,194 +143,271 @@ def merge_allow(settings: dict, rules: list[str]) -> tuple[dict, list[str]]:
     return out, added
 
 
+def drop_allow(settings: dict, rules: list[str]) -> tuple[dict, list[str]]:
+    """Take the rules out of permissions.allow. Returns the new settings and what was removed."""
+    out = json.loads(json.dumps(settings))
+    allow = out.get("permissions", {}).get("allow")
+    if not isinstance(allow, list):
+        return out, []
+    removed = [r for r in allow if r in rules]
+    allow[:] = [r for r in allow if r not in rules]
+    return out, removed
+
+
 def _run(args: list[str]) -> tuple[int, str]:
     p = subprocess.run(args, check=False, capture_output=True, text=True)
     return p.returncode, (p.stdout + p.stderr)
 
 
-def _allow(settings_path: Path, check: bool, say) -> bool:
-    """permissions.allow in an agent's settings.json gains the read-only ds tools."""
+# --- the agents ----------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Cli:
+    """How one agent CLI is driven. `skills` is the folder our symlinks go in, or None for Cortex,
+    which keeps its own list (`cortex skill add/remove`)."""
+    name: str
+    mcp_add: tuple[str, ...]           # after the binary, before the server name
+    mcp_sep: tuple[str, ...]           # between the server name and the command
+    mcp_remove: tuple[str, ...]
+    settings: Callable[[], Path] | None
+    skills: Callable[[], Path] | None
+
+
+CLIS = {
+    "claude": Cli("claude", ("mcp", "add", "--scope", "user"), ("--",), ("mcp", "remove", "--scope", "user"),
+                  lambda: claude_home() / "settings.json", lambda: claude_home() / "skills"),
+    "cortex": Cli("cortex", ("mcp", "add"), (), ("mcp", "remove"),
+                  lambda: cortex_home() / "settings.json", None),
+    "codex": Cli("codex", ("mcp", "add"), ("--",), ("mcp", "remove"),
+                 None, lambda: codex_home() / "skills"),
+}
+
+
+def _registered(bin: str, s: Server) -> str:
+    """'ok' (this command), 'other' (some other command) or 'no'."""
+    code, text = _run([bin, "mcp", "get", s.name])
+    if code != 0:
+        return "no"
+    return "ok" if all(part in text for part in s.argv) else "other"
+
+
+def _server(cli: Cli, bin: str, s: Server, check: bool, say) -> bool:
+    state = _registered(bin, s)
+    cmd = " ".join(s.argv)
+    if state == "ok":
+        say(f"mcp server {s.name}: registered ({cmd})")
+        return True
+    if state == "other":
+        say(f"mcp server {s.name}: registered with a different command; " + ("would replace" if check else "replacing"))
+        if not check:
+            _run([bin, *cli.mcp_remove, s.name])
+    if check:
+        say(f"mcp server {s.name}: would register {cmd}")
+        return True
+    code, text = _run([bin, *cli.mcp_add, s.name, *cli.mcp_sep, *s.argv])
+    say(f"mcp server {s.name}: {'registered' if code == 0 else 'FAILED: ' + text.strip()}")
+    return code == 0
+
+
+def _unserver(cli: Cli, bin: str, s: Server, check: bool, say) -> bool:
+    if _registered(bin, s) == "no":
+        say(f"mcp server {s.name}: not registered")
+        return True
+    if check:
+        say(f"mcp server {s.name}: would unregister")
+        return True
+    code, text = _run([bin, *cli.mcp_remove, s.name])
+    say(f"mcp server {s.name}: {'unregistered' if code == 0 else 'FAILED: ' + text.strip()}")
+    return code == 0
+
+
+def _links(cli: Cli, bin: str, dirs: list[Path], check: bool, say) -> bool:
+    """The skills reach the agent: symlinks in its skills folder, or Cortex's own list."""
+    if not dirs:
+        say("skills: none found (a source checkout of ds-next, and skills-os beside it, ship them); skipped")
+        return True
+    ok = True
+    if cli.skills is None:                      # cortex keeps its own list of skill directories
+        _, listed = _run([bin, "skill", "list"])
+        for path in dirs:
+            if str(path) in listed:
+                say(f"skill /{path.name}: added ({path})")
+            elif check:
+                say(f"skill /{path.name}: would add {path}")
+            else:
+                code, text = _run([bin, "skill", "add", str(path)])
+                say(f"skill /{path.name}: {'added' if code == 0 else 'FAILED: ' + text.strip()}")
+                ok = ok and code == 0
+        return ok
+    folder = cli.skills()
+    for target in dirs:
+        link = folder / target.name
+        if link.is_symlink() and link.resolve() == target.resolve():
+            say(f"skill /{target.name}: linked ({link})")
+        elif link.exists() or link.is_symlink():
+            say(f"skill /{target.name}: {link} exists and is not ours; left alone")
+            ok = False
+        elif check:
+            say(f"skill /{target.name}: would link {link} -> {target}")
+        else:
+            folder.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(target)
+            say(f"skill /{target.name}: linked ({link})")
+    return ok
+
+
+def _unlinks(cli: Cli, bin: str, dirs: list[Path], check: bool, say) -> bool:
+    ok = True
+    if cli.skills is None:
+        _, listed = _run([bin, "skill", "list"])
+        for path in dirs:
+            if str(path) not in listed:
+                continue
+            if check:
+                say(f"skill /{path.name}: would remove {path}")
+            else:
+                code, text = _run([bin, "skill", "remove", str(path)])
+                say(f"skill /{path.name}: {'removed' if code == 0 else 'FAILED: ' + text.strip()}")
+                ok = ok and code == 0
+        return ok
+    folder = cli.skills()
+    for target in dirs:
+        link = folder / target.name
+        if not link.is_symlink():
+            continue
+        if link.resolve() != target.resolve():
+            say(f"skill /{target.name}: {link} is not ours; left alone")
+            continue
+        if check:
+            say(f"skill /{target.name}: would unlink {link}")
+        else:
+            link.unlink()
+            say(f"skill /{target.name}: unlinked ({link})")
+    return ok
+
+
+def _settings(path: Path, say) -> dict | None:
     try:
-        settings = json.loads(settings_path.read_text()) if settings_path.is_file() else {}
+        return json.loads(path.read_text()) if path.is_file() else {}
     except ValueError as e:
-        say(f"permissions: {settings_path} is not valid JSON ({e}); not touched")
+        say(f"permissions: {path} is not valid JSON ({e}); not touched")
+        return None
+
+
+def _write_settings(path: Path, settings: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        shutil.copy2(path, path.with_suffix(".json.bak"))
+    path.write_text(json.dumps(settings, indent=2) + "\n")
+
+
+def _allow(settings_path: Path, rules: list[str], check: bool, say) -> bool:
+    """permissions.allow in an agent's settings.json gains the read-only tools."""
+    settings = _settings(settings_path, say)
+    if settings is None:
         return False
-    new, added = merge_allow(settings, read_only_rules())
+    new, added = merge_allow(settings, rules)
     if not added:
-        say(f"permissions: {len(read_only_rules())} read-only ds tools already allowed")
+        say(f"permissions: {len(rules)} read-only tools already allowed")
     elif check:
-        say(f"permissions: would allow {len(added)} read-only ds tools in {settings_path}")
+        say(f"permissions: would allow {len(added)} read-only tools in {settings_path}")
     else:
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        if settings_path.is_file():
-            shutil.copy2(settings_path, settings_path.with_suffix(".json.bak"))
-        settings_path.write_text(json.dumps(new, indent=2) + "\n")
-        say(f"permissions: allowed {len(added)} read-only ds tools in {settings_path} (backup .json.bak)")
+        _write_settings(settings_path, new)
+        say(f"permissions: allowed {len(added)} read-only tools in {settings_path} (backup .json.bak)")
     return True
 
 
-def setup_claude(check: bool, say) -> bool:
-    """Claude Code: the server at user scope, the skills linked into ~/.claude/skills, the
-    read-only tools allowed in ~/.claude/settings.json. Returns True when fully set up."""
-    claude = shutil.which("claude")
-    if not claude:
-        say("claude: not on PATH; skipped (install Claude Code, then rerun ds-next setup)")
+def _disallow(settings_path: Path, rules: list[str], check: bool, say) -> bool:
+    settings = _settings(settings_path, say)
+    if settings is None:
         return False
-    binary = ds_next_bin()
-    if not binary.is_file():
-        say(f"ds-next: {binary} not found; cannot register the server")
+    new, removed = drop_allow(settings, rules)
+    if not removed:
+        say("permissions: no read-only rules of ours to drop")
+    elif check:
+        say(f"permissions: would drop {len(removed)} read-only rules from {settings_path}")
+    else:
+        _write_settings(settings_path, new)
+        say(f"permissions: dropped {len(removed)} read-only rules from {settings_path} (backup .json.bak)")
+    return True
+
+
+def _connect(cli: Cli, check: bool, say) -> bool:
+    bin = shutil.which(cli.name)
+    if not bin:
+        say(f"{cli.name}: not on PATH; skipped (install it, then rerun ds-next setup)")
+        return False
+    if not ds_next_bin().is_file():
+        say(f"ds-next: {ds_next_bin()} not found; cannot register the server")
         return False
     ok = True
-    code, text = _run([claude, "mcp", "get", "ds"])
-    if code == 0 and str(binary) in text and "mcp" in text:
-        say(f"mcp server ds: registered in Claude Code ({binary} mcp)")
-    else:
-        if code == 0:
-            say("mcp server ds: registered with a different command; " + ("would replace" if check else "replacing"))
-            if not check:
-                _run([claude, "mcp", "remove", "--scope", "user", "ds"])
-        if check:
-            say(f"mcp server ds: would register {binary} mcp (user scope)")
-        else:
-            code, text = _run([claude, "mcp", "add", "--scope", "user", "ds", "--", str(binary), "mcp"])
-            say(f"mcp server ds: {'registered in Claude Code' if code == 0 else 'FAILED: ' + text.strip()}")
-            ok = ok and code == 0
-    sdir = skills_dir()
-    if sdir is None:
-        say("skills: not shipped with this install (source checkout only); skipped")
-    else:
-        for name in SKILLS:
-            link, target = claude_home() / "skills" / name, sdir / name
-            if link.is_symlink() and link.resolve() == target.resolve():
-                say(f"skill /{name}: linked ({link})")
-            elif link.exists() or link.is_symlink():
-                say(f"skill /{name}: {link} exists and is not ours; left alone")
-                ok = False
-            elif check:
-                say(f"skill /{name}: would link {link} -> {target}")
-            else:
-                link.parent.mkdir(parents=True, exist_ok=True)
-                link.symlink_to(target)
-                say(f"skill /{name}: linked ({link})")
-    ok = _allow(claude_home() / "settings.json", check, say) and ok
-    say("write tools (scaffold_project, adopt_repo, block_add, code_add, capture) still ask: that is the control point")
+    for s in servers():
+        ok = _server(cli, bin, s, check, say) and ok
+    if shutil.which("ds-code") is None:
+        say("mcp server code: ds-code is not on PATH; the code tools come when it is installed and this is rerun")
+    ok = _links(cli, bin, skill_dirs(), check, say) and ok
+    if cli.settings is not None:
+        ok = _allow(cli.settings(), read_only_rules(), check, say) and ok
+    say(WRITES_NOTE)
+    return ok
+
+
+def _disconnect(cli: Cli, check: bool, say) -> bool:
+    bin = shutil.which(cli.name)
+    if not bin:
+        say(f"{cli.name}: not on PATH; nothing to undo")
+        return True
+    ok = True
+    for s in servers():
+        ok = _unserver(cli, bin, s, check, say) and ok
+    ok = _unlinks(cli, bin, skill_dirs(), check, say) and ok
+    if cli.settings is not None:
+        ok = _disallow(cli.settings(), all_rules(), check, say) and ok
+    return ok
+
+
+def setup_claude(check: bool, say) -> bool:
+    """Claude Code: the servers at user scope, the skills linked into ~/.claude/skills, the read-only
+    tools allowed in ~/.claude/settings.json. Returns True when fully set up."""
+    return _connect(CLIS["claude"], check, say)
+
+
+def setup_cortex(check: bool, say) -> bool:
+    """Cortex Code: the servers, the skills in its own list, the read-only tools allowed."""
+    return _connect(CLIS["cortex"], check, say)
+
+
+def setup_codex(check: bool, say) -> bool:
+    """Codex: the servers in its config, the skills linked into its skills folder. It has no list of
+    tools that never ask; in ds-next's terminal, ds-next answers Codex's approvals itself."""
+    return _connect(CLIS["codex"], check, say)
+
+
+def _each(agent: str, step: Callable[[Cli, bool, Callable], bool], check: bool, say, none: str) -> bool:
+    if agent != "auto":
+        return step(CLIS[agent], check, say)
+    found = [a for a in CLIS if shutil.which(a)]
+    if not found:
+        say(none)
+        return False
+    ok = True
+    for a in found:
+        say(f"{a}:")
+        ok = step(CLIS[a], check, say) and ok
     return ok
 
 
 def setup(agent: str, check: bool, say) -> bool:
     """`auto`: every agent CLI on PATH. A named agent is set up and, unless --check, recorded as
     the terminal's."""
-    steps = {"claude": setup_claude, "cortex": setup_cortex, "codex": setup_codex}
-    if agent == "auto":
-        found = [a for a in steps if shutil.which(a)]
-        if not found:
-            say("no agent on PATH: install Claude Code, Cortex Code or Codex, then rerun ds-next setup")
-            return False
-        ok = True
-        for a in found:
-            say(f"{a}:")
-            ok = steps[a](check, say) and ok
-        return ok
-    if not check:
+    if agent != "auto" and not check:
         say(f"terminal agent: {agent} (recorded in {set_default_agent(agent)})")
-    return steps[agent](check, say)
+    return _each(agent, _connect, check, say,
+                 "no agent on PATH: install Claude Code, Cortex Code or Codex, then rerun ds-next setup")
 
 
-def setup_cortex(check: bool, say) -> bool:
-    """Returns True when Cortex is now (or already was) fully set up."""
-    cortex = shutil.which("cortex")
-    if not cortex:
-        say("cortex: not on PATH; skipped (install Cortex Code, then rerun ds-next setup)")
-        return False
-    ok = True
-    binary = ds_next_bin()
-    if not binary.is_file():
-        say(f"ds-next: {binary} not found; cannot register the server")
-        return False
-
-    # 1. the MCP server
-    code, text = _run([cortex, "mcp", "get", "ds"])
-    if code == 0 and str(binary) in text and "mcp" in text:
-        say(f"mcp server ds: registered ({binary} mcp)")
-    else:
-        if code == 0:
-            say("mcp server ds: registered with a different command; replacing" if not check else
-                "mcp server ds: registered with a different command; would replace")
-            if not check:
-                _run([cortex, "mcp", "remove", "ds"])
-        if check:
-            say(f"mcp server ds: would register {binary} mcp")
-        else:
-            code, text = _run([cortex, "mcp", "add", "ds", str(binary), "mcp"])
-            say(f"mcp server ds: {'registered' if code == 0 else 'FAILED: ' + text.strip()}")
-            ok = ok and code == 0
-
-    # 2. the skills
-    sdir = skills_dir()
-    if sdir is None:
-        say("skills: not shipped with this install (source checkout only); skipped")
-    else:
-        _, listed = _run([cortex, "skill", "list"])
-        for name in SKILLS:
-            path = sdir / name
-            if str(path) in listed:
-                say(f"skill /{name}: added ({path})")
-            elif check:
-                say(f"skill /{name}: would add {path}")
-            else:
-                code, text = _run([cortex, "skill", "add", str(path)])
-                say(f"skill /{name}: {'added' if code == 0 else 'FAILED: ' + text.strip()}")
-                ok = ok and code == 0
-
-    # 3. read-only tools never prompt
-    ok = _allow(cortex_home() / "settings.json", check, say) and ok
-    say("write tools (scaffold_project, adopt_repo, block_add, code_add, capture) still ask: that is the control point")
+def remove(agent: str, check: bool, say) -> bool:
+    """Undo setup for `auto` (every agent CLI on PATH) or one agent. The config file stays."""
+    ok = _each(agent, _disconnect, check, say, "no agent on PATH: nothing to undo")
+    say(f"{config_path()}: kept (canon's uninstall.sh asks about it)")
     return ok
-
-
-def setup_codex(check: bool, say) -> bool:
-    """Codex: the server in its config, the skills linked into its skills folder. It has no list of
-    tools that never ask; in ds-next's terminal, ds-next answers Codex's approvals itself."""
-    codex = shutil.which("codex")
-    if not codex:
-        say("codex: not on PATH; skipped (install Codex, then rerun ds-next setup)")
-        return False
-    binary = ds_next_bin()
-    if not binary.is_file():
-        say(f"ds-next: {binary} not found; cannot register the server")
-        return False
-    ok = True
-    code, text = _run([codex, "mcp", "get", "ds"])
-    if code == 0 and str(binary) in text and "mcp" in text:
-        say(f"mcp server ds: registered in Codex ({binary} mcp)")
-    else:
-        if code == 0:
-            say("mcp server ds: registered with a different command; " + ("would replace" if check else "replacing"))
-            if not check:
-                _run([codex, "mcp", "remove", "ds"])
-        if check:
-            say(f"mcp server ds: would register {binary} mcp")
-        else:
-            code, text = _run([codex, "mcp", "add", "ds", "--", str(binary), "mcp"])
-            say(f"mcp server ds: {'registered in Codex' if code == 0 else 'FAILED: ' + text.strip()}")
-            ok = ok and code == 0
-    sdir = skills_dir()
-    if sdir is None:
-        say("skills: not shipped with this install (source checkout only); skipped")
-    else:
-        for name in SKILLS:
-            link, target = codex_home() / "skills" / name, sdir / name
-            if link.is_symlink() and link.resolve() == target.resolve():
-                say(f"skill /{name}: linked ({link})")
-            elif link.exists() or link.is_symlink():
-                say(f"skill /{name}: {link} exists and is not ours; left alone")
-                ok = False
-            elif check:
-                say(f"skill /{name}: would link {link} -> {target}")
-            else:
-                link.parent.mkdir(parents=True, exist_ok=True)
-                link.symlink_to(target)
-                say(f"skill /{name}: linked ({link})")
-    say("write tools (scaffold_project, adopt_repo, block_add, code_add, capture) still ask: that is the control point")
-    return ok
-

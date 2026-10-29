@@ -208,14 +208,19 @@ def docs(output: Path = typer.Option(None, "--out", help="build directory (defau
 @app.command()
 def setup(check: bool = typer.Option(False, "--check", help="report what would change; write nothing"),
           agent: str = typer.Option("auto", "--agent", help="claude, cortex, codex, or auto (every one on PATH); a "
-                                    "choice is remembered in ~/.ds/config.toml as the terminal's agent")):
-    """Connect this machine's agents (Claude Code, Cortex Code, Codex) to the knowledge system. Safe to rerun."""
+                                    "choice is remembered in ~/.ds/config.toml as the terminal's agent"),
+          remove: bool = typer.Option(False, "--remove", help="undo setup: unregister the ds and code servers, unlink "
+                                      "the skills, drop the allow rules; ~/.ds/config.toml stays")):
+    """Connect this machine's agents (Claude Code, Cortex Code, Codex) to the knowledge system: the ds and code
+    servers, the skills, the read-only tools allowed. Safe to rerun; --remove undoes it."""
     from . import setup as setup_mod
 
     if agent not in ("auto", "claude", "cortex", "codex"):
         _err(f"{agent} is not an agent", "claude, cortex, codex or auto")
         raise typer.Exit(2)
-    ok = setup_mod.setup(agent, check, lambda line: out.print(Text("  " + line)))
+    def say(line: str) -> None:
+        out.print(Text("  " + line))
+    ok = setup_mod.remove(agent, check, say) if remove else setup_mod.setup(agent, check, say)
     if not check:
         out.print(S.hint("restart the agent to pick this up"))
     raise typer.Exit(0 if ok else 1)

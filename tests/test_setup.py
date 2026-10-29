@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from ds_next import setup
 
 
@@ -133,3 +136,107 @@ def test_setup_codex_registers_and_links(tmp_path, monkeypatch):
     link = tmp_path / "codex-home" / "skills" / "ds-new"
     assert link.is_symlink() and (link / "SKILL.md").is_file()
     assert setup.setup("auto", True, said.append)          # auto finds Codex on PATH too
+
+
+def test_drop_allow_takes_only_ours():
+    settings = {"permissions": {"allow": ["Bash(ls)", "mcp__ds__canon_list", "mcp__code__callers"]}}
+    out, removed = setup.drop_allow(settings, setup.all_rules())
+    assert out["permissions"]["allow"] == ["Bash(ls)"] and sorted(removed) == ["mcp__code__callers", "mcp__ds__canon_list"]
+    assert setup.drop_allow({}, setup.all_rules()) == ({}, [])
+
+
+def _fake_skills_os(root):
+    for name in ("so-capture", "so-changes"):
+        (root / name).mkdir(parents=True)
+        (root / name / "SKILL.md").write_text(f"---\nname: {name}\n---\n")
+    (root / "so-empty").mkdir()                      # no SKILL.md: not a skill
+    return root
+
+
+def test_setup_claude_adds_code_and_skills_os_and_remove_undoes_it(tmp_path, monkeypatch):
+    import shutil
+    calls: list[list[str]] = []
+    state: dict[str, str] = {}                      # the agent's registry of servers, by name
+
+    def run(args):
+        calls.append(args)
+        if args[1:3] == ["mcp", "get"]:
+            return (0, state[args[3]]) if args[3] in state else (1, "")
+        if args[1:3] == ["mcp", "add"]:
+            state[args[5]] = " ".join(args[7:])
+        if args[1:3] == ["mcp", "remove"]:
+            state.pop(args[5], None)
+        return (0, "")
+    monkeypatch.setattr(setup, "_run", run)
+    monkeypatch.setattr(shutil, "which", lambda name: {"claude": "/bin/claude", "ds-code": "/npm/bin/ds-code"}.get(name))
+    monkeypatch.setattr(setup.Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("DS_SKILLS", str(_fake_skills_os(tmp_path / "skills-os")))
+    binary = tmp_path / "venv" / "bin" / "ds-next"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n")
+    monkeypatch.setattr(setup, "ds_next_bin", lambda: binary)
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text('{"permissions": {"allow": ["Bash(ls)"]}}\n')
+    theirs = tmp_path / ".claude" / "skills" / "so-capture"      # a link of their own, not ours
+    theirs.parent.mkdir(parents=True)
+    theirs.symlink_to(tmp_path / "elsewhere")
+
+    said: list[str] = []
+    assert not setup.setup_claude(False, said.append)            # their so-capture link is reported, not replaced
+    assert state == {"ds": f"{binary} mcp", "code": "/npm/bin/ds-code mcp"}
+    assert ["/bin/claude", "mcp", "add", "--scope", "user", "code", "--", "/npm/bin/ds-code", "mcp"] in calls
+    skills = tmp_path / ".claude" / "skills"
+    assert (skills / "ds-new").is_symlink() and (skills / "so-changes").resolve() == (tmp_path / "skills-os" / "so-changes")
+    assert not (skills / "so-empty").exists() and (skills / "so-capture").resolve() == tmp_path / "elsewhere"
+    assert any("so-capture" in line and "not ours" in line for line in said)
+    allowed = json.loads(settings.read_text())["permissions"]["allow"]
+    assert "mcp__code__callers" in allowed and "mcp__ds__canon_read" in allowed and "Bash(ls)" in allowed
+
+    # --check reports and changes nothing
+    before = len(calls)
+    assert setup.remove("claude", True, said.append)
+    assert state and calls[before:] == [c for c in calls[before:] if c[1:3] in (["mcp", "get"], ["skill", "list"])]
+
+    undone: list[str] = []
+    assert setup.remove("claude", False, undone.append)
+    assert state == {}
+    assert not (skills / "ds-new").exists() and not (skills / "so-changes").is_symlink()
+    assert (skills / "so-capture").is_symlink()                  # theirs stays
+    assert json.loads(settings.read_text())["permissions"]["allow"] == ["Bash(ls)"]
+    assert any("config.toml: kept" in line for line in undone)
+    # a second remove finds nothing and still succeeds
+    again: list[str] = []
+    assert setup.remove("claude", False, again.append)
+    assert any("not registered" in line for line in again) and any("no read-only rules" in line for line in again)
+
+
+def test_setup_cortex_adds_and_removes_skills_by_path(tmp_path, monkeypatch):
+    import shutil
+    calls: list[list[str]] = []
+    listed: list[str] = []
+
+    def run(args):
+        calls.append(args)
+        if args[1:3] == ["skill", "list"]:
+            return 0, "\n".join(listed)
+        if args[1:3] == ["skill", "add"]:
+            listed.append(args[3])
+        if args[1:3] == ["skill", "remove"]:
+            listed.remove(args[3])
+        return (1, "") if args[1:3] == ["mcp", "get"] else (0, "")
+    monkeypatch.setattr(setup, "_run", run)
+    monkeypatch.setattr(shutil, "which", lambda name: "/bin/cortex" if name == "cortex" else None)
+    monkeypatch.setattr(setup.Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("DS_SKILLS", str(_fake_skills_os(tmp_path / "skills-os")))
+    binary = tmp_path / "venv" / "bin" / "ds-next"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n")
+    monkeypatch.setattr(setup, "ds_next_bin", lambda: binary)
+    said: list[str] = []
+    assert setup.setup_cortex(False, said.append)
+    assert ["/bin/cortex", "mcp", "add", "ds", str(binary), "mcp"] in calls
+    assert sorted(Path(p).name for p in listed) == ["ds-new", "ds-terminal-design", "so-capture", "so-changes"]
+    assert "mcp__code__callers" not in json.loads((tmp_path / ".snowflake" / "cortex" / "settings.json").read_text())["permissions"]["allow"]
+    assert setup.remove("cortex", False, said.append)
+    assert listed == [] and ["/bin/cortex", "skill", "remove", str(tmp_path / "skills-os" / "so-capture")] in calls

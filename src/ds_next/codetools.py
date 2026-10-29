@@ -27,13 +27,20 @@ def cortex_bin() -> str | None:
     return shutil.which("cortex")
 
 
-def mcp_servers(cwd: Path) -> dict[str, dict]:
-    """Stdio MCP server configs for the agent, for the tools that are installed. npm installs `ds-code`
-    on Windows as a .cmd shim, which an agent can only start through cmd."""
+def code_command() -> list[str] | None:
+    """How to start `ds-code`, or None when it is not installed. npm installs it on Windows as a .cmd
+    shim, which an agent can only start through cmd."""
     c = code_bin()
     if c is None:
+        return None
+    return ["cmd", "/c", c] if Path(c).suffix.lower() in (".cmd", ".bat") else [c]
+
+
+def mcp_servers(cwd: Path) -> dict[str, dict]:
+    """Stdio MCP server configs for the agent, for the tools that are installed."""
+    cmd = code_command()
+    if cmd is None:
         return {}
-    cmd = ["cmd", "/c", c] if Path(c).suffix.lower() in (".cmd", ".bat") else [c]
     return {CODE: {"type": "stdio", "command": cmd[0], "args": [*cmd[1:], "mcp", str(Path(cwd).resolve())]}}
 
 
