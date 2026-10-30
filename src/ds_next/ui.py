@@ -531,7 +531,7 @@ class Repl:
         by_id = {c.id: c for c in candidates}
         name = rest[0] if rest and scaffold.NAME_RE.match(rest[0]) else ""
         # Three answers. The type decides the rest (tags, test and lint commands); standards are
-        # declined later, from /status, when one actually gets in the way.
+        # declined later, with ds-next decide, when one actually gets in the way.
         def describe(c: Scaffold) -> str:
             return f"{c.title} · outputs: {', '.join(c.outputs) or 'none'}"
 
@@ -605,7 +605,7 @@ class Repl:
             return [t.strip() for t in v["tags"].split(",") if t.strip()]
 
         def footer(v: dict[str, str]) -> str:
-            return f"{len(self.canon.applicable(tags_of(v)))} standards apply · pending until you adopt them in /status"
+            return f"{len(self.canon.applicable(tags_of(v)))} standards apply · pending until you decide (ds-next decide, or ask me once you have read them)"
 
         def validate(v: dict[str, str]):
             if not v["purpose"].strip():

@@ -23,7 +23,7 @@ SERVER = "ds"
 READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status", "repo_graph",
              "scaffold_list", "scaffold_get", "block_list", "block_get", "snowflake_search",
              "code_search", "code_get")
-WRITES = ("scaffold_project", "adopt_repo", "block_add", "code_add", "capture")
+WRITES = ("scaffold_project", "adopt_repo", "decide_standard", "block_add", "code_add", "capture")
 READ_ONLY_IDS = {f"mcp__{SERVER}__{t}" for t in READ_ONLY}
 
 
@@ -235,6 +235,34 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
                      f"tags: {', '.join(a.tags)}\ntest: {a.test_cmd or 'none found'}\nlint: {a.lint_cmd or 'none found'}\n"
                      f"wrote: {', '.join(written)}\n{r.summary()}")
 
+    @tool("decide_standard", "Record the user's decision on canon standards in this repo's .ds/manifest.toml: "
+          "action adopt or decline; ids as project_status lists them, or all: true for every pending one. A "
+          "decline needs a reason and takes a revisit date (default 90 days out). Only after the user has read "
+          "the standard and said so; never on your own judgement.", {
+              "type": "object",
+              "properties": {
+                  "action": {"type": "string", "enum": ["adopt", "decline"]},
+                  "ids": {"type": "array", "items": {"type": "string"}, "description": "standard ids"},
+                  "all": {"type": "boolean", "description": "every pending standard"},
+                  "reason": {"type": "string", "description": "why, one line; a decline needs it"},
+                  "revisit": {"type": "string", "description": "YYYY-MM-DD; a decline defaults to 90 days out"},
+              },
+              "required": ["action"]})
+    async def decide_standard(args):
+        repo = reconcile.find_repo(cwd)
+        if repo is None:
+            return _text(f"{cwd} is not a ds repo (no .ds/manifest.toml); adopt_repo first", error=True)
+        action = str(args.get("action", "")).strip()
+        try:
+            done = reconcile.decide(repo, action, parse_ids(args.get("ids")), by=scaffold._git_user(), canon=canon,
+                                    reason=str(args.get("reason") or ""), revisit=str(args.get("revisit") or "") or None,
+                                    all_pending=bool(args.get("all")))
+        except ValueError as e:
+            return _text(f"nothing recorded: {e}", error=True)
+        r = reconcile.check(repo, canon)
+        return _text(f"{'adopted' if action == 'adopt' else 'declined'} {', '.join(done)} in {repo / '.ds' / 'manifest.toml'}\n"
+                     f"{r.summary()}" + (f"\nstill pending: {', '.join(r.pending)}" if r.pending else ""))
+
     @tool("block_list", "List the canon's accepted code blocks: tested modules to add to a repo instead "
           "of writing that code yourself. Optional comma-separated tags filter them.", {"tags": str})
     async def block_list(args):
@@ -362,7 +390,7 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
                      f"says the team's repos live.")
 
     return [canon_list, canon_read, skills_list, skill_read, project_status, repo_graph, scaffold_list, scaffold_get,
-            scaffold_project, adopt_repo, block_list, block_get, block_add, code_search, code_get, code_add,
+            scaffold_project, adopt_repo, decide_standard, block_list, block_get, block_add, code_search, code_get, code_add,
             snowflake_search, capture]
 
 
@@ -448,6 +476,9 @@ Rules:
   a change. Do not re-ask what the draft already answers.
 - An existing repository joins the system with adopt_repo, never by writing its manifest or
   AGENTS.md yourself. Call it with no overrides, show what it detected, and let the user correct it.
+- A pending standard is adopted or declined with decide_standard, after the user has read it
+  (canon_read here, or /docs in the browser) and said which way. Never edit the manifest for that,
+  and never decide on the user's behalf; a decline carries their reason.
 - If the user asks for a project in chat instead, propose a complete draft in one message
   (scaffold, name, purpose, and suggested values for the rest), ask for one confirmation, and
   create it the same way. Never ask one question at a time. Never write project files yourself.

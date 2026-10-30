@@ -1,4 +1,5 @@
 """`reconcile`: offline, deterministic, read-only. Compares a repo's manifest with the canon.
+`decide` is the one writer here: it records the owner's adopt or decline in the manifest.
 
 Pending standards are information. Only a malformed manifest, a broken pointer or a [uses] entry
 that names nothing the canon's registry knows is an error, so the pre-push hook never blocks on a
@@ -12,7 +13,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .kb import Canon
+from .kb import Canon, json_str
 
 STATUSES = ("adopted", "declined", "pending")
 
@@ -49,6 +50,60 @@ def find_repo(start: Path) -> Path | None:
         if (p / ".ds" / "manifest.toml").is_file():
             return p
     return None
+
+
+REVISIT_DAYS = 90
+_TABLE = r"^\[{name}\][ \t]*\n(?:(?!\[)[^\n]*\n?)*"   # a TOML table: its header line, then every line up to the next header
+
+
+def decide(repo: Path, action: str, ids: list[str], *, by: str, canon: Canon | None = None, reason: str = "",
+           revisit: str | dt.date | None = None, all_pending: bool = False, today: dt.date | None = None) -> list[str]:
+    """Record the owner's decision on standards in .ds/manifest.toml: `adopt`, or `decline` with a
+    reason and a revisit date (REVISIT_DAYS out by default). Each standard gets its [standards.<id>]
+    table with status, version, by and on, replacing one that is there. `all_pending` adds every
+    pending standard. Checks everything before writing anything, and returns the ids written."""
+    canon = canon or Canon()
+    today = today or dt.date.today()
+    if action not in ("adopt", "decline"):
+        raise ValueError(f"action must be adopt or decline, not {action!r}")
+    if not by.strip():
+        raise ValueError("by: who decides (git's user.name is empty; pass it)")
+    path = Path(repo) / ".ds" / "manifest.toml"
+    if not path.is_file():
+        raise ValueError(f"{repo} has no .ds/manifest.toml: ds-next adopt first")
+    if all_pending:
+        rep = check(repo, canon, today)
+        ids = [*ids, *(p.split(" ", 1)[0] for p in rep.pending if "(block;" not in p)]
+    ids = list(dict.fromkeys(i.strip() for i in ids if i and i.strip()))
+    if not ids:
+        raise ValueError("name the standards to decide on (as reconcile lists them), or pass --all for every pending one")
+    unknown = [i for i in ids if i not in canon.standards]
+    if unknown:
+        raise ValueError(f"not in the canon: {', '.join(unknown)}")
+    if action == "decline":
+        if not reason.strip():
+            raise ValueError("a decline needs a reason: why, in one line (it is shown to whoever asks)")
+        if revisit in (None, ""):
+            revisit = today + dt.timedelta(days=REVISIT_DAYS)
+        elif isinstance(revisit, str):
+            try:
+                revisit = dt.date.fromisoformat(revisit)
+            except ValueError:
+                raise ValueError(f"revisit must be a date like {today + dt.timedelta(days=REVISIT_DAYS)}, not {revisit!r}") from None
+    text = path.read_text()
+    for sid in ids:
+        lines = [f"[standards.{sid}]", f'status = "{action}ed"' if action == "adopt" else 'status = "declined"',
+                 f"version = {canon.standards[sid].version}", f"by = {json_str(by.strip())}", f'on = "{today}"']
+        if action == "decline":
+            lines += [f"reason = {json_str(' '.join(reason.split()))}", f'revisit = "{revisit}"']
+        block = "\n".join(lines) + "\n"
+        pattern = re.compile(_TABLE.format(name=re.escape(f"standards.{sid}")), re.MULTILINE)
+        if pattern.search(text):
+            text = pattern.sub(lambda _m, b=block: b + "\n", text, count=1)
+        else:
+            text = text.rstrip("\n") + "\n\n" + block
+    path.write_text(text)
+    return ids
 
 
 def repo_name(repo: Path) -> str:

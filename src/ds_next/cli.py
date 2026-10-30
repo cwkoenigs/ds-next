@@ -76,7 +76,7 @@ def adopt(path: Path = typer.Argument(Path("."), help="an existing repository"),
           adopt_all: bool = typer.Option(False, "--adopt-all",
                                          help="adopt every applicable standard now instead of leaving them pending")):
     """Bring an existing repository into the system: manifest, AGENTS.md, DECISIONS.md and the
-    pre-push hook. Nothing else changes; standards are pending until adopted from /status."""
+    pre-push hook. Nothing else changes; standards are pending until `ds-next decide` records each."""
     a = scaffold.detect(path)
     if purpose:
         a.purpose = purpose
@@ -110,7 +110,8 @@ def _report(repo: Path, rep) -> None:
     for e in rep.errors:
         _err(e)
     if rep.pending:
-        out.print(S.hint("open ds-next and run /status to adopt"))
+        out.print(S.hint("read them first (/docs in ds-next renders the canon; ds-next canon read <id> prints one), then "
+                         "ds-next decide adopt <id…>, or decide decline <id> --reason '…'; decide adopt --all takes every pending one"))
 
 
 @app.command()
@@ -128,12 +129,35 @@ def reconcile(path: Path = typer.Argument(Path("."), help="repo, or a directory 
     if quiet:
         if rep.pending:
             out.print(S.outcome("warn", "ds", f"{len(rep.pending)} standard(s) pending · {', '.join(rep.pending)} · "
-                                              "open ds-next and run /status"))
+                                              "ds-next decide records each"))
         for e in rep.errors:
             _err(e)
     else:
         _report(repo, rep)
     raise typer.Exit(0 if rep.ok else 1)
+
+
+@app.command()
+def decide(action: str = typer.Argument(..., help="adopt or decline"),
+           ids: list[str] | None = typer.Argument(None, help="standard ids, as reconcile lists them"),
+           all_pending: bool = typer.Option(False, "--all", help="every pending standard of this repo"),
+           reason: str = typer.Option("", help="why; a decline needs one"),
+           revisit: str = typer.Option("", help="when to look again, YYYY-MM-DD; a decline defaults to 90 days out"),
+           path: Path = typer.Option(Path("."), "--path", help="repo, or a directory inside one")):
+    """Record a decision on standards in .ds/manifest.toml: adopt, or decline with a reason. Read them
+    first: /docs in ds-next renders the canon in the browser; `ds-next canon read <id>` prints one."""
+    repo = reconcile_mod.find_repo(path.resolve())
+    if repo is None:
+        _err(f"{path.resolve()} is not a ds repo (no .ds/manifest.toml)", "ds-next adopt brings it in first")
+        raise typer.Exit(2)
+    try:
+        done = reconcile_mod.decide(repo, action, list(ids or []), by=scaffold._git_user(), reason=reason,
+                                    revisit=revisit or None, all_pending=all_pending)
+    except ValueError as e:
+        _err(f"nothing recorded: {e}")
+        raise typer.Exit(2)
+    out.print(S.outcome("ok", repo.name, f"{'adopted' if action == 'adopt' else 'declined'} {', '.join(done)}"))
+    _report(repo, reconcile_mod.check(repo))
 
 
 @canon_app.command("list")
