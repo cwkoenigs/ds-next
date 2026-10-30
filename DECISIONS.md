@@ -180,3 +180,36 @@ canon as standards; this file links them with `[[id]]` rather than restating the
 - **Validation:** `tests/test_setup.py`: the tables survive two setups and the agent line is never
   duplicated (both new tests fail on the old writer); a broken file is kept aside.
 - **Review date:** when a second tool needs `[world]`.
+
+## local-018: `ds-next setup` owns every connection, and can undo it
+
+- **Status:** Accepted
+- **Date:** 2026-10-29
+- **Context:** The guide promised that an agent on a set-up machine has the `ds` tools, the `code`
+  tools "with ds-code on PATH", and the `/so-*` skills. Only the first was true outside the ds-next
+  terminal: `setup` registered `ds` alone (the terminal attached `code` to its own sessions), and the
+  `/so-*` links in `~/.claude/skills` on the owner's Mac were made by hand on 2026-10-13. Nothing
+  undid any of it; a machine could be installed and updated but not cleanly removed, and a sandbox
+  trial on 2026-10-29 left skill paths under `/private/tmp` in Cortex's list for good.
+- **Options considered:**
+  1. **Leave `code` to each repo's `.mcp.json` and the skills to skills-os's `install.sh`**: three
+     mechanisms for one promise, none of them reversible, and the repo file only reaches a repo that
+     carries it.
+  2. **A separate `ds-next teardown` command**: a second place that has to know what setup wrote.
+  3. **`setup` registers everything the guide promises, and `setup --remove` reverses exactly that**:
+     chosen. One table (`CLIS`) says how each agent CLI is driven; `servers()` and `skill_dirs()` say
+     what to connect; connect and disconnect walk the same lists.
+- **Decision:** `setup` registers `ds` and, when `ds-code` is on PATH, `code` (`ds-code mcp`, through
+  `cmd /c` for npm's Windows shim); links `/ds-new`, `/ds-terminal-design` and every `so-*/SKILL.md`
+  of the skills-os checkout kb already locates; allows the read-only tools of both servers in Claude
+  Code and Cortex Code. `setup --remove` unregisters the two servers, unlinks only links that resolve
+  into our checkouts (Cortex: `skill remove` by path), drops the rules of both servers whether or not
+  ds-code is installed now, and leaves `~/.ds/config.toml` to canon's `uninstall.sh`. Codex's
+  app-server already switched both servers off in the terminal, expecting this.
+- **Consequences:** The guide's claim is true in every agent, and canon's `uninstall.sh` has one
+  command to call. A link that is not ours is reported and left alone, both ways.
+- **Validation:** `tests/test_setup.py`: `code` registered and allowed when ds-code is on PATH;
+  skills-os skills linked, a foreign link kept; `--check` runs only `get`/`list`; remove empties the
+  registry, the links and the rules and leaves the rest; a second remove still succeeds; Cortex adds
+  and removes by path. 168 tests pass.
+- **Review date:** when a fourth agent CLI is added, to see whether `CLIS` still describes it.

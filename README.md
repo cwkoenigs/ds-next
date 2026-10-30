@@ -35,7 +35,7 @@ flows back to where it is written.
 | canon | the only place a standard's text exists; ds-next reads `index.json` and the files | `$DS_CANON`, else `~/Developer/canon` |
 | skills-os | procedures the agent follows (`skill_read`), offered as `/so-*` slash commands, and named in every new repo's AGENTS.md | `$DS_SKILLS`, else `~/Developer/skills-os` |
 | docs-ds | the Docusaurus shell `/docs` builds with; never modified | `$DS_DOCS_SHELL`, else `~/Developer/docs-ds` |
-| Claude Code, Cortex Code or Codex | the model and its tools, driven through its SDK (Codex: its app-server) with the knowledge base as in-process tools | `claude`, `cortex` or `codex` on `PATH`; `ds-next setup --agent claude` (or `cortex`, or `codex`) decides which the terminal uses, `DS_AGENT` overrides for one run |
+| Claude Code, Cortex Code or Codex | the model and its tools, driven through its SDK (Codex: its app-server) with the knowledge base as in-process tools | `claude`, `cortex` or `codex` on `PATH`; `ds-next setup --agent claude` (or `cortex`, or `codex`) decides which the terminal uses, `DS_AGENT` overrides for one run; `ds-next setup` wires every agent on PATH (the `ds` and `code` servers, the skills, the read-only tools allowed) and `ds-next setup --remove` unwires them |
 
 One file per machine, `~/.ds/config.toml`, holds what differs between worlds (home and work): the
 terminal's `agent`, and `[world]` and `[capture]`, where the team's repos live and where `/so-capture`
