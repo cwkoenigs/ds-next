@@ -121,7 +121,7 @@ interrupts a turn and keeps the session. Enter on an empty line answers the mode
 question with "keep my answers"; with no question pending it prints a hint. Ctrl-D leaves.
 
 The agent's tools, served in-process: `canon_list`, `canon_read`, `skills_list`, `skill_read`,
-`project_status`, `scaffold_list` and `scaffold_get` are approved automatically because they
+`project_status`, `repo_graph`, `scaffold_list` and `scaffold_get` are approved automatically because they
 only read. `scaffold_project` and `capture` write, as do Cortex's own Bash and file edits, so
 they ask unless the form already approved them. An approval shows the whole request, asks one
 question at a time even when Cortex makes parallel calls, and takes only an explicit `y`, `a` or

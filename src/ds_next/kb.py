@@ -170,8 +170,9 @@ class Canon:
                                   s.get("hash", ""), s.get("type", ""), tuple(s.get("outputs", [])))
                 for s in data.get("scaffolds", [])}
             self._code = {s["id"]: s for s in data.get("code", [])}
+            self._repos = data.get("repos") or {}
         return {"standards": self._standards, "scaffolds": self._scaffolds, "blocks": self._blocks,
-                "code": self._code}
+                "code": self._code, "repos": self._repos}
 
     @property
     def standards(self) -> dict[str, Standard]:
@@ -189,6 +190,26 @@ class Canon:
     def code(self) -> dict[str, dict]:
         """Every function, class and constant in the blocks, by "<block>:<name>" (index.json "code")."""
         return self._index()["code"]
+
+    @property
+    def repos(self) -> dict:
+        """The cross-repo graph (canon adr-002): index.json's `repos` section as the canon's pipeline
+        wrote it (generated, repos, edges, report), or {} before it has run."""
+        return self._index()["repos"]
+
+    def repo_graph(self, name: str) -> dict | None:
+        """One registered repo's place in the graph: what it provides and uses, who uses what it
+        provides (with file and line), and the report's lines about it. None when it is not registered."""
+        section = self.repos
+        repo = next((r for r in section.get("repos", []) if r.get("name") == name), None)
+        if repo is None:
+            return None
+        rep = section.get("report", {})
+        return {"commit": repo.get("commit", ""), "provides": repo.get("provides", {}), "uses": repo.get("uses", {}),
+                "used_by": [e for e in section.get("edges", []) if e.get("to") == name],
+                "undeclared": [e for e in rep.get("undeclared", []) if e.get("from") == name],
+                "unresolved": [u for u in rep.get("unresolved", []) if u.get("repo") == name],
+                "unused": [u["what"] for u in rep.get("unused", []) if u.get("repo") == name]}
 
     def block_about(self, bid: str) -> str:
         return _front_matter((self.root / self.blocks[bid].dir / "BLOCK.md").read_text())[1]

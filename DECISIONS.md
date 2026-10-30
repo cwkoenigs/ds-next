@@ -258,3 +258,48 @@ canon as standards; this file links them with `[[id]]` rather than restating the
   ds-next → ds-code as declared and mentioned for the server and the four tools, and every
   ds-next → canon use as unresolved; `pytest` passes.
 - **Review date:** when step 4 lands, or 2026-11-30 with the ADR.
+
+## local-020: ds-next reads the cross-repo graph; a stale `[uses]` fails the hook; `mcp` fast-forwards the canon
+
+- **Status:** Accepted
+- **Date:** 2026-10-30
+- **Context:** canon adr-002 step 4. The canon's pipeline (canon #10) writes a `repos` section into
+  `index.json`: every registered repo with its `[provides]` and `[uses]`, the edges between them with
+  file and line, and a report. Nothing read it. Two further gaps: a `[uses]` entry that no longer
+  matched a provider's `[provides]` would only surface in the nightly report, and each machine read
+  the index from its own canon clone, as fresh as its owner's last pull, which on twenty machines
+  means twenty different graphs.
+- **Options considered:**
+  1. **A separate graph module and server:** a second thing to register and remove on every
+     machine, for data that already arrives in the index every repo reads.
+  2. **One tool that dumps the section as JSON:** exact and unreadable; a model would spend its
+     turn parsing instead of acting.
+  3. **The section exposed where the model already looks, in the model's words:** chosen.
+     `Canon.repos` and `Canon.repo_graph(name)` in kb.py read the section like the rest of the index
+     (re-read when the file changes). `project_status` gains `graph` and `notes`. A `repo_graph` tool
+     answers by repo (provides, uses, used by, and what the report says about it) or by `what` (who
+     provides it, who uses it), read-only, so every agent gets an allow rule for it through `setup`.
+     The system prompt sends the model to it before changing a command, name or path.
+  4. **Where the resolve check lives:** adr-002 said "a test in each repo". One check in
+     `reconcile` covers every repo and runs in the pre-push hook already: a `[uses]` key naming no
+     registered repo, or an entry not among what a provider declares, is an error (a typo or a
+     rename about to break someone); an entry pointing at a repo that declares nothing is a note,
+     because that is the provider's gap, not the user's. Without the section the shapes alone are
+     checked, so a repo whose canon pipeline has not run is never blocked.
+  5. **Freshness:** `ds-next mcp` runs `git pull --ff-only` on the canon clone before serving, with
+     a ten-second limit, no prompts, and one sentence on stderr when it cannot (offline, no upstream,
+     not a clone); `DS_CANON_PULL=0` skips it. The terminal does not pull yet; its sessions are
+     started by a person who can.
+- **Decision:** as in 3 to 5. The scan literal rule (`[optional]` removed, trailing `*` removed)
+  is repeated from canon's `build_repos.py` in `reconcile._literal`, five lines, so the hook agrees
+  with the pipeline about what matches.
+- **Consequences:** an agent in any ds repo can ask who depends on what it is about to change,
+  across repos it has never cloned, as fresh as the canon's last pipeline. A renamed command fails
+  the consumer's next push with the provider's list in the message. `project_status` output grows
+  by one object. A machine that cannot reach the host says so once per session and goes on.
+- **Validation:** `tests/test_graph.py`: the section read and absent; the tool by repo, by `what`,
+  with no argument inside and outside a ds repo; `project_status` with the graph; reconcile on a
+  match by text and by literal, a stale entry, an unregistered repo, a silent provider, bad shapes,
+  and no section; the fast-forward against a bare origin, a plain directory, a clone with no
+  upstream and an unreachable remote. 182 tests pass.
+- **Review date:** when step 5 (ds-code `change_impact`) lands, or 2026-11-30 with the ADR.
