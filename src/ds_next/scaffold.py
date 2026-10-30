@@ -492,7 +492,11 @@ class Adoption:
             raise ValueError("purpose: one line on what the repo does (the README had no first sentence)")
         if not self.owner.strip():
             raise ValueError("owner: who answers for this repo")
-        self.tags = sorted({t.strip() for t in self.tags if t.strip()})
+        self.tags = sorted({t.strip().lower() for t in self.tags if t.strip()})
+        if not self.tags:
+            raise ValueError("tags: none detected (no package.json, pyproject.toml, dbt_project.yml or Dockerfile "
+                             "at the top); pass them, e.g. --tags docs,bash. The manifest needs at least one, "
+                             "and the standards that apply here follow from them")
 
 
 def _readme_purpose(repo: Path) -> str:

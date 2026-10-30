@@ -17,6 +17,15 @@ def test_canon_applicable_by_tags(canon):
     assert "error-handling" in [s.id for s in canon.applicable(["package"])]
 
 
+def test_pointers_reach_blocks_and_scaffolds_too(canon):
+    """A BLOCK.md that says 'render one with [[block-demo]]' points at a canon id; only an id the
+    canon has nowhere is a problem. Pins are checked against the block's or scaffold's version."""
+    assert canon.pointer_problems("Use [[block-demo]] and [[python-cli]] with [[testing]].") == []
+    assert canon.pointer_problems("See [[block-demo@1]] and [[python-cli@3]].") == []
+    assert canon.pointer_problems("See [[block-demo@2]].") == ["[[block-demo@2]] pins a version the canon never had (current v1)"]
+    assert canon.pointer_problems("See [[block-nope]].") == ["[[block-nope]] is not in the canon"]
+
+
 def test_pointers_skip_code_and_check_pins(canon):
     assert canon.pointer_problems("see [[testing]] and [[nope]] but not `[[also-nope]]`") == [
         "[[nope]] is not in the canon"]
@@ -256,3 +265,20 @@ def test_adopt_refuses_without_purpose_or_git(tmp_path, canon, skills):
     with pytest.raises(ValueError, match="git"):
         scaffold.adopt(bare, scaffold.detect(bare), canon, skills)
     assert not (bare / ".ds").exists()
+
+
+def test_adopt_refuses_without_tags_and_writes_nothing(tmp_path, canon, skills):
+    """A repo of prose and shell has no manifest to detect a stack from. Reconcile needs at least one
+    tag, so adopt asks for them instead of writing a manifest the next check would call broken."""
+    repo = tmp_path / "notes"
+    repo.mkdir()
+    (repo / "README.md").write_text("Notes the team keeps.\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    found = scaffold.detect(repo)
+    assert found.tags == []
+    with pytest.raises(ValueError, match="tags: none detected.*--tags"):
+        scaffold.adopt(repo, found, canon, skills)
+    assert not (repo / ".ds").exists() and not (repo / "AGENTS.md").exists()
+    found.tags = ["Docs", "bash", "docs"]
+    scaffold.adopt(repo, found, canon, skills)
+    assert 'tags = ["bash", "docs"]' in (repo / ".ds" / "manifest.toml").read_text()
