@@ -13,7 +13,7 @@ def test_merge_allow_adds_only_missing_and_keeps_the_rest():
 
 
 def test_merge_allow_from_empty_settings_is_idempotent():
-    rules = setup.read_only_rules()
+    rules = [r for s in setup.servers() for r in s.rules]
     assert "mcp__ds__scaffold_get" in rules and "mcp__ds__scaffold_project" not in rules
     once, added = setup.merge_allow({}, rules)
     assert added == rules
@@ -103,7 +103,7 @@ def test_setup_claude_registers_links_and_allows(tmp_path, monkeypatch):
     binary.write_text("#!/bin/sh\n")
     monkeypatch.setattr(setup, "ds_next_bin", lambda: binary)
     said: list[str] = []
-    assert setup.setup_claude(False, said.append)
+    assert setup._connect(setup.CLIS["claude"], False, said.append)
     assert ["/bin/claude", "mcp", "add", "--scope", "user", "ds", "--", str(binary), "mcp"] in calls
     link = tmp_path / ".claude" / "skills" / "ds-new"
     assert link.is_symlink() and (link / "SKILL.md").is_file()
@@ -112,7 +112,7 @@ def test_setup_claude_registers_links_and_allows(tmp_path, monkeypatch):
     # a second run changes nothing and says so
     monkeypatch.setattr(setup, "_run", lambda args: (0, f"Command: {binary}\nArgs: mcp") if args[1:3] == ["mcp", "get"] else (0, ""))
     again: list[str] = []
-    assert setup.setup_claude(False, again.append)
+    assert setup._connect(setup.CLIS["claude"], False, again.append)
     assert any("already allowed" in line for line in again) and any("linked (" in line for line in again)
 
 
@@ -131,7 +131,7 @@ def test_setup_codex_registers_and_links(tmp_path, monkeypatch):
     binary.write_text("#!/bin/sh\n")
     monkeypatch.setattr(setup, "ds_next_bin", lambda: binary)
     said: list[str] = []
-    assert setup.setup_codex(False, said.append)
+    assert setup._connect(setup.CLIS["codex"], False, said.append)
     assert ["/bin/codex", "mcp", "add", "ds", "--", str(binary), "mcp"] in calls
     link = tmp_path / "codex-home" / "skills" / "ds-new"
     assert link.is_symlink() and (link / "SKILL.md").is_file()
@@ -183,7 +183,7 @@ def test_setup_claude_adds_code_and_skills_os_and_remove_undoes_it(tmp_path, mon
     theirs.symlink_to(tmp_path / "elsewhere")
 
     said: list[str] = []
-    assert not setup.setup_claude(False, said.append)            # their so-capture link is reported, not replaced
+    assert not setup._connect(setup.CLIS["claude"], False, said.append)            # their so-capture link is reported, not replaced
     assert state == {"ds": f"{binary} mcp", "code": "/npm/bin/ds-code mcp"}
     assert ["/bin/claude", "mcp", "add", "--scope", "user", "code", "--", "/npm/bin/ds-code", "mcp"] in calls
     skills = tmp_path / ".claude" / "skills"
@@ -234,7 +234,7 @@ def test_setup_cortex_adds_and_removes_skills_by_path(tmp_path, monkeypatch):
     binary.write_text("#!/bin/sh\n")
     monkeypatch.setattr(setup, "ds_next_bin", lambda: binary)
     said: list[str] = []
-    assert setup.setup_cortex(False, said.append)
+    assert setup._connect(setup.CLIS["cortex"], False, said.append)
     assert ["/bin/cortex", "mcp", "add", "ds", str(binary), "mcp"] in calls
     assert sorted(Path(p).name for p in listed) == ["ds-new", "ds-terminal-design", "so-capture", "so-changes"]
     assert "mcp__code__callers" not in json.loads((tmp_path / ".snowflake" / "cortex" / "settings.json").read_text())["permissions"]["allow"]
@@ -294,7 +294,7 @@ def test_failed_registration_gets_no_allow_rules(tmp_path, monkeypatch):
         return real_run(args)
     monkeypatch.setattr(setup, "_run", run)
     said: list[str] = []
-    assert not setup.setup_claude(False, said.append)
+    assert not setup._connect(setup.CLIS["claude"], False, said.append)
     allowed = json.loads((tmp_path / ".claude" / "settings.json").read_text())["permissions"]["allow"]
     assert "mcp__ds__canon_list" in allowed and not any(r.startswith("mcp__code__") for r in allowed)
 

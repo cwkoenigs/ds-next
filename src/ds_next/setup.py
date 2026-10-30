@@ -11,12 +11,14 @@ what the terminal then runs its turns through. Every step reports what it found 
 --check changes nothing.
 
 `--remove` is the exact reverse, and only of ours: a server is unregistered when it runs our command
-(a `code` or `ds` that runs something else is left alone and named), a skill link comes off when it
-points into ds-next's skills or skills-os, even dangling, and the rules of both servers are dropped.
-~/.ds/config.toml stays: canon's uninstall.sh asks about it, with the repositories.
+(`ds-next` or `ds-code`, wherever installed; a `code` or `ds` that runs something else is left alone
+and named), a skill link comes off when it points into ds-next's skills or skills-os, even dangling,
+and the rules of both servers are dropped. ~/.ds/config.toml stays: canon's uninstall.sh asks about
+it, with the repositories.
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -28,7 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SKILLS = ("ds-new", "ds-terminal-design")
-WRITES_NOTE = "write tools (scaffold_project, adopt_repo, block_add, code_add, capture) still ask: that is the control point"
+_SRC_SKILLS = Path(__file__).resolve().parents[2] / "skills"      # a source checkout's skills folder
 
 
 def cortex_home() -> Path:
@@ -83,20 +85,7 @@ def ds_next_bin() -> Path:
 
 def skills_dir() -> Path | None:
     """The skills shipped with a source checkout (ds-next/skills). None when installed from a wheel."""
-    d = Path(__file__).resolve().parents[2] / "skills"
-    return d if (d / SKILLS[0] / "SKILL.md").is_file() else None
-
-
-def skill_roots() -> list[Path]:
-    """Where our skills live: ds-next/skills and the skills-os checkout, absolute. A link into either is
-    ours, which is what remove goes by, even when the checkout itself is gone."""
-    from . import kb
-    roots = []
-    d = skills_dir()
-    roots.append(d.resolve() if d else Path(__file__).resolve().parents[2] / "skills")
-    s = kb.skills_path()
-    roots.append(s.resolve() if s else Path.home() / "Developer" / "skills-os")
-    return roots
+    return _SRC_SKILLS if (_SRC_SKILLS / SKILLS[0] / "SKILL.md").is_file() else None
 
 
 def skill_dirs() -> list[Path]:
@@ -104,12 +93,28 @@ def skill_dirs() -> list[Path]:
     Absolute paths, so a relative DS_SKILLS never becomes a relative, broken link."""
     from . import kb
     out = []
-    d = skills_dir()
-    if d is not None:
-        out += [(d / name).resolve() for name in SKILLS]
+    if skills_dir() is not None:
+        out += [(_SRC_SKILLS / name).resolve() for name in SKILLS]
     s = kb.skills_path()
     if s is not None:
         out += sorted(p.resolve() for p in s.glob("so-*") if (p / "SKILL.md").is_file())
+    return out
+
+
+def skill_roots() -> set[Path]:
+    """Where our skills can live, in every spelling a link may carry: ds-next/skills and skills-os in each
+    place kb looks (and DS_SKILLS). A link into any of these is ours, even when the checkout is gone."""
+    from . import kb
+    roots = [_SRC_SKILLS] + [base / "skills-os" for base in kb.bases()]
+    if s := kb.skills_path():
+        roots.append(s)
+    out = set()
+    for r in roots:
+        out.add(_norm(r))
+        try:
+            out.add(_norm(r.resolve()))
+        except OSError:
+            pass
     return out
 
 
@@ -117,44 +122,31 @@ def skill_dirs() -> list[Path]:
 
 @dataclass(frozen=True)
 class Server:
+    """One of the system's two servers: what it is called, which command runs it, which tools only read."""
     name: str
-    argv: tuple[str, ...]          # the command and its arguments, as the agent will start it
-    read_only: tuple[str, ...]     # the tools that never need to ask
+    command: str                   # the command's basename: how a registration is recognised as ours
+    read_only: tuple[str, ...]
 
     @property
     def rules(self) -> list[str]:
         return [f"mcp__{self.name}__{t}" for t in self.read_only]
 
+    def argv(self) -> tuple[str, ...] | None:
+        """How this machine starts it, or None when it is not installed here."""
+        from .codetools import code_command
+        if self.command == "ds-next":
+            return (str(ds_next_bin()), "mcp")
+        c = code_command()
+        return (*c, "mcp") if c else None
 
-def servers() -> list[Server]:
-    """`ds` always; `code` when ds-code is installed (npm puts `ds-code` on PATH)."""
+
+def servers() -> tuple[Server, Server]:
     from .agent import READ_ONLY, SERVER
-    from .codetools import CODE, CODE_TOOLS, code_command
-    out = [Server(SERVER, (str(ds_next_bin()), "mcp"), READ_ONLY)]
-    c = code_command()
-    if c is not None:
-        out.append(Server(CODE, (*c, "mcp"), CODE_TOOLS))
-    return out
-
-
-def removable() -> list[Server]:
-    """What remove looks for: the servers above, plus `code` by its command name when ds-code is no
-    longer installed, so a registration left behind still comes off."""
     from .codetools import CODE, CODE_TOOLS
-    out = servers()
-    if all(s.name != CODE for s in out):
-        out.append(Server(CODE, ("ds-code",), CODE_TOOLS))
-    return out
+    return Server(SERVER, "ds-next", READ_ONLY), Server(CODE, "ds-code", CODE_TOOLS)
 
 
 def all_rules() -> list[str]:
-    """Every allow rule a setup may ever have written, whether or not ds-code is on PATH now."""
-    from .agent import READ_ONLY, SERVER
-    from .codetools import CODE, CODE_TOOLS
-    return [f"mcp__{SERVER}__{t}" for t in READ_ONLY] + [f"mcp__{CODE}__{t}" for t in CODE_TOOLS]
-
-
-def read_only_rules() -> list[str]:
     return [r for s in servers() for r in s.rules]
 
 
@@ -175,7 +167,7 @@ def _allow_list(settings: dict, create: bool) -> list | None:
 
 def merge_allow(settings: dict, rules: list[str]) -> tuple[dict, list[str]]:
     """Add the rules missing from permissions.allow. Returns the new settings and what was added."""
-    out = json.loads(json.dumps(settings))
+    out = copy.deepcopy(settings)
     allow = _allow_list(out, create=True)
     added = [r for r in rules if r not in allow]
     allow.extend(added)
@@ -184,7 +176,7 @@ def merge_allow(settings: dict, rules: list[str]) -> tuple[dict, list[str]]:
 
 def drop_allow(settings: dict, rules: list[str]) -> tuple[dict, list[str]]:
     """Take the rules out of permissions.allow. Returns the new settings and what was removed."""
-    out = json.loads(json.dumps(settings))
+    out = copy.deepcopy(settings)
     allow = _allow_list(out, create=False)
     if allow is None:
         return out, []
@@ -202,48 +194,50 @@ def _run(args: list[str]) -> tuple[int, str]:
 
 @dataclass(frozen=True)
 class Cli:
-    """How one agent CLI is driven. `skills` is the folder our symlinks go in, or None for Cortex,
-    which keeps its own list (`cortex skill add/remove`)."""
+    """How one agent CLI is driven: `<bin> mcp add|remove <scope> <name> <sep> <command...>`. `skills` is
+    the folder our symlinks go in, or None for Cortex, which keeps its own list (`cortex skill add/remove`)."""
     name: str
-    mcp_add: tuple[str, ...]           # after the binary, before the server name
-    mcp_sep: tuple[str, ...]           # between the server name and the command
-    mcp_remove: tuple[str, ...]
+    scope: tuple[str, ...]
+    sep: tuple[str, ...]
     settings: Callable[[], Path] | None
     skills: Callable[[], Path] | None
 
 
 CLIS = {
-    "claude": Cli("claude", ("mcp", "add", "--scope", "user"), ("--",), ("mcp", "remove", "--scope", "user"),
-                  lambda: claude_home() / "settings.json", lambda: claude_home() / "skills"),
-    "cortex": Cli("cortex", ("mcp", "add"), (), ("mcp", "remove"),
-                  lambda: cortex_home() / "settings.json", None),
-    "codex": Cli("codex", ("mcp", "add"), ("--",), ("mcp", "remove"),
-                 None, lambda: codex_home() / "skills"),
+    "claude": Cli("claude", ("--scope", "user"), ("--",), lambda: claude_home() / "settings.json", lambda: claude_home() / "skills"),
+    "cortex": Cli("cortex", (), (), lambda: cortex_home() / "settings.json", None),
+    "codex": Cli("codex", (), ("--",), None, lambda: codex_home() / "skills"),
 }
 
 
 def _registered(bin: str, s: Server) -> str:
-    """'ok' (this command), 'other' (some other command) or 'no'."""
+    """What `mcp get` says about the server: 'ok' (this machine's command), 'ours' (our command from
+    somewhere else, say an older install), 'other' (something else entirely) or 'no'."""
     code, text = _run([bin, "mcp", "get", s.name])
     if code != 0:
         return "no"
-    return "ok" if all(part in text for part in s.argv) else "other"
+    argv = s.argv()
+    if argv and all(part in text for part in argv):
+        return "ok"
+    return "ours" if re.search(rf"\b{re.escape(s.command)}(\.cmd|\.exe)?\b", text) else "other"
 
 
 def _server(cli: Cli, bin: str, s: Server, check: bool, say) -> bool:
+    """Register one installed server (its argv is known), replacing a registration that runs anything else."""
+    argv = s.argv() or ()
     state = _registered(bin, s)
-    cmd = " ".join(s.argv)
+    cmd = " ".join(argv)
     if state == "ok":
         say(f"mcp server {s.name}: registered ({cmd})")
         return True
-    if state == "other":
+    if state != "no":
         say(f"mcp server {s.name}: registered with a different command; " + ("would replace" if check else "replacing"))
         if not check:
-            _run([bin, *cli.mcp_remove, s.name])
+            _run([bin, "mcp", "remove", *cli.scope, s.name])
     if check:
         say(f"mcp server {s.name}: would register {cmd}")
         return True
-    code, text = _run([bin, *cli.mcp_add, s.name, *cli.mcp_sep, *s.argv])
+    code, text = _run([bin, "mcp", "add", *cli.scope, s.name, *cli.sep, *argv])
     say(f"mcp server {s.name}: {'registered' if code == 0 else 'FAILED: ' + text.strip()}")
     return code == 0
 
@@ -259,37 +253,25 @@ def _unserver(cli: Cli, bin: str, s: Server, check: bool, say) -> bool:
     if check:
         say(f"mcp server {s.name}: would unregister")
         return True
-    code, text = _run([bin, *cli.mcp_remove, s.name])
+    code, text = _run([bin, "mcp", "remove", *cli.scope, s.name])
     say(f"mcp server {s.name}: {'unregistered' if code == 0 else 'FAILED: ' + text.strip()}")
     return code == 0
 
 
 def _norm(p: Path) -> Path:
-    """A path as it compares: Windows' `\\\\?\\` prefix (what readlink returns there) dropped, case folded."""
-    s = str(p)
-    s = s.removeprefix("\\\\?\\")
-    return Path(os.path.normcase(s))
+    """A path as it compares (case folded on Windows)."""
+    return Path(os.path.normcase(str(p)))
 
 
-def _ours(path: Path, roots: list[Path]) -> bool:
-    """Does a skill path (a link's raw target, or a listed directory) lie under one of our roots?
-    Compared as written and resolved, so a dangling link to a deleted checkout still counts."""
+def _ours(path: Path, roots: set[Path]) -> bool:
+    """Does a skill path (a link's target, or a listed directory) lie under one of our roots? Compared
+    as written and resolved, so a dangling link to a deleted checkout still counts."""
     candidates = {_norm(path)}
     try:
         candidates.add(_norm(path.resolve()))
     except OSError:
         pass
-    for root in roots:
-        forms = {_norm(root)}
-        try:
-            forms.add(_norm(root.resolve()))
-        except OSError:
-            pass
-        for c in candidates:
-            for r in forms:
-                if c == r or r in c.parents:
-                    return True
-    return False
+    return any(c == r or r in c.parents for c in candidates for r in roots)
 
 
 def _links(cli: Cli, bin: str, dirs: list[Path], check: bool, say) -> bool:
@@ -330,36 +312,35 @@ def _links(cli: Cli, bin: str, dirs: list[Path], check: bool, say) -> bool:
 def _unlinks(cli: Cli, bin: str, check: bool, say) -> bool:
     """Every skill of ours comes off: whatever points into our roots, present or dangling."""
     roots = skill_roots()
-    ok = True
     if cli.skills is None:
+        ok = True
         _, listed = _run([bin, "skill", "list"])
         for line in listed.splitlines():
-            path = line.strip().lstrip("-").strip()
-            if not path or not Path(path).expanduser().is_absolute() or not _ours(Path(path).expanduser(), roots):
+            p = Path(line.strip().lstrip("-").strip()).expanduser()
+            if not p.is_absolute() or not _ours(p, roots):
                 continue
             if check:
-                say(f"skill /{Path(path).name}: would remove {path}")
+                say(f"skill /{p.name}: would remove {p}")
             else:
-                code, text = _run([bin, "skill", "remove", path])
-                say(f"skill /{Path(path).name}: {'removed' if code == 0 else 'FAILED: ' + text.strip()}")
+                code, text = _run([bin, "skill", "remove", str(p)])
+                say(f"skill /{p.name}: {'removed' if code == 0 else 'FAILED: ' + text.strip()}")
                 ok = ok and code == 0
         return ok
     folder = cli.skills()
     if not folder.is_dir():
-        return ok
+        return True
     for link in sorted(folder.iterdir()):
         if not link.is_symlink():
             continue
-        raw = Path(os.readlink(link))
-        target = raw if raw.is_absolute() else link.parent / raw
-        if not _ours(target, roots):
+        raw = Path(os.readlink(link).removeprefix("\\\\?\\"))      # Windows readlink carries the \\?\ prefix
+        if not _ours(raw if raw.is_absolute() else link.parent / raw, roots):
             continue
         if check:
             say(f"skill /{link.name}: would unlink {link}")
         else:
             link.unlink()
             say(f"skill /{link.name}: unlinked ({link})")
-    return ok
+    return True
 
 
 def _settings(path: Path, say) -> dict | None:
@@ -413,6 +394,7 @@ def _disallow(settings_path: Path, rules: list[str], check: bool, say) -> bool:
 
 
 def _connect(cli: Cli, check: bool, say) -> bool:
+    from .agent import WRITES
     bin = shutil.which(cli.name)
     if not bin:
         say(f"{cli.name}: not on PATH; skipped (install it, then rerun ds-next setup)")
@@ -420,19 +402,16 @@ def _connect(cli: Cli, check: bool, say) -> bool:
     if not ds_next_bin().is_file():
         say(f"ds-next: {ds_next_bin()} not found; cannot register the server")
         return False
-    ok = True
-    registered: list[Server] = []
+    installed = [s for s in servers() if s.argv() is not None]
     for s in servers():
-        if _server(cli, bin, s, check, say):
-            registered.append(s)
-        else:
-            ok = False
-    if shutil.which("ds-code") is None:
-        say("mcp server code: ds-code is not on PATH; the code tools come when it is installed and this is rerun")
+        if s not in installed:
+            say(f"mcp server {s.name}: {s.command} is not on PATH; it comes when that is installed and this is rerun")
+    registered = [s for s in installed if _server(cli, bin, s, check, say)]
+    ok = len(registered) == len(installed)
     ok = _links(cli, bin, skill_dirs(), check, say) and ok
     if cli.settings is not None:          # only the servers that are ours and registered get their tools pre-approved
         ok = _allow(cli.settings(), [r for s in registered for r in s.rules], check, say) and ok
-    say(WRITES_NOTE)
+    say(f"write tools ({', '.join(WRITES)}) still ask: that is the control point")
     return ok
 
 
@@ -442,29 +421,12 @@ def _disconnect(cli: Cli, check: bool, say) -> bool:
         say(f"{cli.name}: not on PATH; nothing to undo")
         return True
     ok = True
-    for s in removable():
+    for s in servers():
         ok = _unserver(cli, bin, s, check, say) and ok
     ok = _unlinks(cli, bin, check, say) and ok
     if cli.settings is not None:
         ok = _disallow(cli.settings(), all_rules(), check, say) and ok
     return ok
-
-
-def setup_claude(check: bool, say) -> bool:
-    """Claude Code: the servers at user scope, the skills linked into ~/.claude/skills, the read-only
-    tools allowed in ~/.claude/settings.json. Returns True when fully set up."""
-    return _connect(CLIS["claude"], check, say)
-
-
-def setup_cortex(check: bool, say) -> bool:
-    """Cortex Code: the servers, the skills in its own list, the read-only tools allowed."""
-    return _connect(CLIS["cortex"], check, say)
-
-
-def setup_codex(check: bool, say) -> bool:
-    """Codex: the servers in its config, the skills linked into its skills folder. It has no list of
-    tools that never ask; in ds-next's terminal, ds-next answers Codex's approvals itself."""
-    return _connect(CLIS["codex"], check, say)
 
 
 def _each(agent: str, step: Callable[[Cli, bool, Callable], bool], check: bool, say, none: str) -> bool:

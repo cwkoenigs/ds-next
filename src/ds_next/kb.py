@@ -25,10 +25,15 @@ CODE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^[ \t]{0,3}\1[`~]*[
                      r"|(`+)[^`\n].*?\2", re.DOTALL | re.MULTILINE)
 
 
+def bases() -> tuple[Path, ...]:
+    """Where the repositories are looked for, in order, when no environment variable names one."""
+    return Path.home() / "Developer", Path.home() / "code", Path.home() / ".ds"
+
+
 def _find(env: str, name: str) -> Path | None:
     if os.environ.get(env):
         return Path(os.environ[env]).expanduser()
-    for base in (Path.home() / "Developer", Path.home() / "code", Path.home() / ".ds"):
+    for base in bases():
         if (base / name).is_dir():
             return base / name
     return None

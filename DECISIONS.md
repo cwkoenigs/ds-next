@@ -221,3 +221,9 @@ canon as standards; this file links them with `[[id]]` rather than restating the
   are absolute even from a relative `DS_SKILLS`. Not taken: locking settings.json against a concurrent
   agent write (a one-shot CLI with a `.bak`), and telling a failed `mcp get` from "not registered"
   (the CLIs' exit codes do not distinguish them).
+- **Simplified 2026-10-29, after a cleanup review (#17):** the two servers are one static table
+  (`servers()`: name, command basename, read-only tools) and each computes its own argv; a registration
+  is "ours" when its command is `ds-next` or `ds-code` wherever installed, so remove also takes a
+  registration left by an older install, and `removable()`/`all_rules()`/the three `setup_<agent>`
+  wrappers are gone. `kb.bases()` names the places repositories are looked for, and remove recognises a
+  link into skills-os under any of them.
