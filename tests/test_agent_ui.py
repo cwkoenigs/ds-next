@@ -67,7 +67,10 @@ def test_adopt_repo_is_offered_and_asks(tmp_path, canon, skills):
     (repo / "README.md").write_text("# Old app\n\nTurns orders into reports.\n")
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     text, err = call(tools, "adopt_repo", {"directory": str(repo), "owner": "Ann"})
-    assert not err and "joined the system" in text
+    assert err and "tags: none detected" in text              # prose and git only: the model must pass tags
+    assert not (repo / ".ds").exists()
+    text, err = call(tools, "adopt_repo", {"directory": str(repo), "owner": "Ann", "tags": ["app"]})
+    assert not err and "joined the system" in text and "tags: app" in text
     assert (repo / ".ds" / "manifest.toml").is_file()
 
 

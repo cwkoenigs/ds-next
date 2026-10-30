@@ -72,7 +72,7 @@ def new(name: str,
 def adopt(path: Path = typer.Argument(Path("."), help="an existing repository"),
           purpose: str = typer.Option("", help="one line; default: the README's first sentence"),
           owner: str = typer.Option("", help="default: the git user"),
-          tags: str = typer.Option("", help="comma-separated; default: detected from the files"),
+          tags: str = typer.Option("", help="comma-separated; default: detected from the files; required when none is"),
           adopt_all: bool = typer.Option(False, "--adopt-all",
                                          help="adopt every applicable standard now instead of leaving them pending")):
     """Bring an existing repository into the system: manifest, AGENTS.md, DECISIONS.md and the

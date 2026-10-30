@@ -303,3 +303,55 @@ canon as standards; this file links them with `[[id]]` rather than restating the
   and no section; the fast-forward against a bare origin, a plain directory, a clone with no
   upstream and an unreachable remote. 182 tests pass.
 - **Review date:** when step 5 (ds-code `change_impact`) lands, or 2026-11-30 with the ADR.
+
+## local-021: `adopt` refuses a repo it detects no tags for, instead of writing a manifest reconcile rejects
+
+- **Status:** Accepted
+- **Date:** 2026-10-30
+- **Context:** `ds-next adopt ~/Developer/canon` and the same for skills-os wrote manifests with
+  `tags = []`, then the reconcile that `adopt` runs last reported `[repo] tags must be a non-empty
+  list of strings`. Both repos are prose and shell: nothing `detect` looks for (package.json,
+  pyproject.toml, dbt_project.yml, Dockerfile) is at their top. `Adoption.validate` checked the
+  name, purpose and owner and let an empty tag list through, so the command's own last line
+  contradicted its first.
+- **Options considered:**
+  1. **Default tags for a repo with none** (`misc`, `docs`): a guess written into two hundred
+     manifests, and `applies_to` globs would start matching it.
+  2. **Let reconcile accept an empty list:** tags are what decide which standards apply; a repo with
+     none would have every standard pending and no way to say otherwise.
+  3. **Refuse before writing, and say how to pass them:** chosen. `validate` raises with the files
+     it looked for and `--tags docs,bash` as the example; the CLI and the `adopt_repo` tool both call
+     it before anything is written, so a refused adopt leaves no file behind. Tags are lowercased
+     and deduplicated on the way, as `/new` already did.
+- **Decision:** as in 3. The two manifests on the owner's Mac are corrected by hand in the same
+  change set (canon: standards, bash, python; skills-os: skills, markdown, bash).
+- **Consequences:** `adopt` on a repo of prose stops with one sentence and a flag to pass, which is
+  what the owner would have wanted the first time. Detection is unchanged; a wider `detect` (Markdown,
+  shell) is a separate question.
+- **Validation:** `tests/test_core.py::test_adopt_refuses_without_tags_and_writes_nothing`; the whole
+  suite passes.
+- **Review date:** 2026-11-30.
+
+## local-022: A pointer may name a block or a scaffold, not only a standard
+
+- **Status:** Accepted
+- **Date:** 2026-10-30
+- **Context:** Adopting the canon itself put its pre-push hook on `reconcile`, which rejected the
+  canon's own BLOCK.md files: `[[block-scaffold-render]]` and `[[block-confined-write]]` are how one
+  block names the block it builds on, and `pointer_problems` knew only standards. Blocks and scaffolds
+  have stable ids and versions in the same index, and ADR-001 has blocks pointed at by id.
+- **Options considered:**
+  1. **Backtick the block references in the canon:** hides a real pointer as code; the canon would
+     stop checking its own cross-references.
+  2. **Skip the pointer check for the canon repo:** the canon is the one repo whose pointers must all
+     resolve.
+  3. **Resolve a pointer against standards, blocks and scaffolds, pins against that target's
+     version:** chosen; four lines in `Canon.pointer_problems`.
+- **Decision:** as in 3. The canon's prose that shows the syntax itself (`[[id]]`, `[[pointer]]`) is
+  put in backticks in the canon, which is what "code is skipped so a doc can talk about the syntax"
+  always meant.
+- **Consequences:** a block's BLOCK.md can name the blocks it uses and the hook checks they exist.
+  A typo in a block id is caught the same way as in a standard id.
+- **Validation:** `tests/test_core.py::test_pointers_reach_blocks_and_scaffolds_too`; the canon's own
+  `ds-next reconcile` passes once its three example lines are backticked.
+- **Review date:** 2026-11-30.

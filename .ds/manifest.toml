@@ -109,4 +109,5 @@ skills = ["ds-new", "ds-terminal-design"]
 [uses]                     # one key per registered repository, in the words its [provides] uses
 canon = ["index.json", "canon-lib", "install.sh", "uninstall.sh"]
 ds-code = ["ds-code mcp", "repo_overview", "file_symbols", "find_symbol", "change_impact"]   # the server, and the tools agent.py names
-skills-os = ["so-*/SKILL.md"]
+skills-os = ["so-*/SKILL.md", "so-capture", "so-changes", "so-build-feature-interview", "so-bug-review-interview"]   # linked by setup; named in every scaffolded AGENTS.md
+docs-ds = ["design-system/tokens.json"]   # the terminal design skill reads the tokens

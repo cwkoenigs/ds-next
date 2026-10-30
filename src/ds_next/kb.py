@@ -273,17 +273,18 @@ class Canon:
         return _front_matter((self.root / self.standards[sid].path).read_text())[1]
 
     def pointer_problems(self, text: str) -> list[str]:
-        """What is wrong with the [[pointers]] in prose: an id the canon does not have, or a
-        pin to a version it never had. Code is skipped so a doc can talk about the syntax."""
+        """What is wrong with the [[pointers]] in prose: an id the canon does not have (a standard,
+        a block or a scaffold), or a pin to a version it never had. Code is skipped so a doc can
+        talk about the syntax."""
         prose = CODE_RE.sub("", text)
         problems = set()
         for m in POINTER_RE.finditer(prose):
             sid, pin = m.group(1), m.group(2)
-            std = self.standards.get(sid)
-            if std is None:
+            target = self.standards.get(sid) or self.blocks.get(sid) or self.scaffolds.get(sid)
+            if target is None:
                 problems.add(f"[[{sid}]] is not in the canon")
-            elif pin is not None and not 1 <= int(pin) <= std.version:
-                problems.add(f"[[{sid}@{pin}]] pins a version the canon never had (current v{std.version})")
+            elif pin is not None and not 1 <= int(pin) <= target.version:
+                problems.add(f"[[{sid}@{pin}]] pins a version the canon never had (current v{target.version})")
         return sorted(problems)
 
 
