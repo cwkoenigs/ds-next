@@ -100,3 +100,13 @@ status = "adopted"
 version = 1
 by = "ckoenigs"
 on = "2026-10-16"
+
+[provides]                 # what other repositories run, share or read (canon adr-002); matched as text
+commands = ["ds-next setup [--remove|--check]", "ds-next mcp", "ds-next new", "ds-next adopt"]
+names = ["mcp__ds__*", "mcp__code__*"]     # the rule prefixes setup writes for the servers it registers, ds and code
+skills = ["ds-new", "ds-terminal-design"]
+
+[uses]                     # one key per registered repository, in the words its [provides] uses
+canon = ["index.json", "canon-lib", "install.sh", "uninstall.sh"]
+ds-code = ["ds-code mcp", "repo_overview", "file_symbols", "find_symbol", "change_impact"]   # the server, and the tools agent.py names
+skills-os = ["so-*/SKILL.md"]

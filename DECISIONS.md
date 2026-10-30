@@ -227,3 +227,34 @@ canon as standards; this file links them with `[[id]]` rather than restating the
   registration left by an older install, and `removable()`/`all_rules()`/the three `setup_<agent>`
   wrappers are gone. `kb.bases()` names the places repositories are looked for, and remove recognises a
   link into skills-os under any of them.
+
+## local-019: The manifest declares what ds-next provides and uses, in the words other repos write
+
+- **Status:** Accepted
+- **Date:** 2026-10-30
+- **Context:** canon adr-002 makes the cross-repo graph a canon product: each repo declares
+  `[provides]` and `[uses]` in `.ds/manifest.toml`, canon's pipeline scans every registered clone for
+  mentions of what the others provide, and `index.json` carries the edges and a report. ds-next owns
+  the contracts that drifted this week: what `setup --remove` undoes is mirrored by canon's
+  `uninstall.sh`, which also hard-codes the server names `ds` and `code` and the rule prefixes. Nothing
+  tied the two sides together.
+- **Options considered:**
+  1. **Every subcommand and every tool name as an entry:** `new`, `status`, `definition` are plain
+     words and match prose everywhere; the report drowns.
+  2. **Commands only:** misses the names canon's uninstall must agree with (`mcp__ds__*`,
+     `mcp__code__*`) and the two skills setup links.
+  3. **The commands other repos run, the two rule prefixes, the two skill names; uses in the
+     providers' words:** chosen. The first compile of the real five found ds-next's prompt naming
+     four ds-code tools it had not declared, so those joined `[uses]`.
+- **Decision:** the two tables at the end of `.ds/manifest.toml`. `[uses]` names canon and skills-os,
+  which have no manifest yet, so those entries show as unresolved in canon's report until the owner
+  adopts them; that is the report doing its job, not a reason to leave them out. Nothing in ds-next
+  reads the tables yet: `project_status` (provides, uses, used by), a `repo_graph` tool, the resolve
+  check in `reconcile`, and the fast-forward of the canon clone on start are adr-002's step 4.
+- **Consequences:** an agent changing `setup`, the server names or the rule prefixes will see, once
+  the pipeline runs, that canon's `uninstall.sh` mirrors them. Declaring is a review habit; the
+  report's `undeclared` list is how a missed one surfaces.
+- **Validation:** `python canon/scripts/build_repos.py ~/Developer` (canon pull request #10) lists
+  ds-next → ds-code as declared and mentioned for the server and the four tools, and every
+  ds-next → canon use as unresolved; `pytest` passes.
+- **Review date:** when step 4 lands, or 2026-11-30 with the ADR.
