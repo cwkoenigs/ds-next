@@ -240,3 +240,89 @@ def test_setup_cortex_adds_and_removes_skills_by_path(tmp_path, monkeypatch):
     assert "mcp__code__callers" not in json.loads((tmp_path / ".snowflake" / "cortex" / "settings.json").read_text())["permissions"]["allow"]
     assert setup.remove("cortex", False, said.append)
     assert listed == [] and ["/bin/cortex", "skill", "remove", str(tmp_path / "skills-os" / "so-capture")] in calls
+
+
+def _claude_env(tmp_path, monkeypatch, registry, which):
+    """A fake claude whose mcp registry is the dict; returns the call log."""
+    import shutil
+    calls: list[list[str]] = []
+
+    def run(args):
+        calls.append(args)
+        if args[1:3] == ["mcp", "get"]:
+            return (0, f"Command: {registry[args[3]]}") if args[3] in registry else (1, "")
+        if args[1:3] == ["mcp", "add"]:
+            registry[args[5]] = " ".join(args[7:])
+        if args[1:3] == ["mcp", "remove"]:
+            registry.pop(args[5], None)
+        return (0, "")
+    monkeypatch.setattr(setup, "_run", run)
+    monkeypatch.setattr(shutil, "which", lambda name: which.get(name))
+    monkeypatch.setattr(setup.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("DS_SKILLS", raising=False)
+    binary = tmp_path / "venv" / "bin" / "ds-next"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n")
+    monkeypatch.setattr(setup, "ds_next_bin", lambda: binary)
+    return calls, binary
+
+
+def test_remove_leaves_a_code_server_that_runs_something_else(tmp_path, monkeypatch):
+    registry = {"ds": f"{tmp_path}/venv/bin/ds-next mcp", "code": "/opt/other/code-server serve"}
+    _claude_env(tmp_path, monkeypatch, registry, {"claude": "/bin/claude", "ds-code": "/npm/bin/ds-code"})
+    said: list[str] = []
+    assert setup.remove("claude", False, said.append)
+    assert "ds" not in registry and registry["code"] == "/opt/other/code-server serve"
+    assert any("code" in line and "not ours" in line for line in said)
+
+
+def test_remove_takes_a_code_registration_after_ds_code_is_gone(tmp_path, monkeypatch):
+    registry = {"code": "/npm/bin/ds-code mcp"}
+    _claude_env(tmp_path, monkeypatch, registry, {"claude": "/bin/claude"})      # no ds-code on PATH any more
+    assert setup.remove("claude", False, lambda line: None)
+    assert registry == {}
+
+
+def test_failed_registration_gets_no_allow_rules(tmp_path, monkeypatch):
+    registry = {"code": "/opt/other/code-server serve"}
+    _claude_env(tmp_path, monkeypatch, registry, {"claude": "/bin/claude", "ds-code": "/npm/bin/ds-code"})
+    real_run = setup._run
+
+    def run(args):                           # the other code server cannot be replaced
+        if args[1:3] in (["mcp", "remove"], ["mcp", "add"]) and args[5] == "code":
+            return (1, "registry is read only")
+        return real_run(args)
+    monkeypatch.setattr(setup, "_run", run)
+    said: list[str] = []
+    assert not setup.setup_claude(False, said.append)
+    allowed = json.loads((tmp_path / ".claude" / "settings.json").read_text())["permissions"]["allow"]
+    assert "mcp__ds__canon_list" in allowed and not any(r.startswith("mcp__code__") for r in allowed)
+
+
+def test_remove_unlinks_a_dangling_link_of_ours_and_keeps_others(tmp_path, monkeypatch):
+    _claude_env(tmp_path, monkeypatch, {}, {"claude": "/bin/claude"})
+    skills_os = _fake_skills_os(tmp_path / "Developer" / "skills-os")   # found beside ~/Developer, like kb does
+    folder = tmp_path / ".claude" / "skills"
+    folder.mkdir(parents=True)
+    (folder / "so-capture").symlink_to(skills_os / "so-capture")
+    (folder / "so-old").symlink_to(skills_os / "so-old")                   # the checkout no longer has it: dangling
+    (folder / "ds-new").symlink_to(setup.skills_dir() / "ds-new")
+    (folder / "theirs").symlink_to(tmp_path / "elsewhere")                 # dangling too, but not ours
+    (folder / "plain").mkdir()
+    assert setup.remove("claude", False, lambda line: None)
+    assert sorted(p.name for p in folder.iterdir()) == ["plain", "theirs"]
+
+
+def test_allow_lists_survive_odd_settings_shapes():
+    assert setup.merge_allow({"permissions": None}, ["a"]) == ({"permissions": {"allow": ["a"]}}, ["a"])
+    assert setup.merge_allow({"permissions": {"allow": "x"}}, ["a"])[0]["permissions"]["allow"] == ["a"]
+    assert setup.drop_allow({"permissions": None}, ["a"]) == ({"permissions": None}, [])
+    assert setup.drop_allow({"permissions": []}, ["a"]) == ({"permissions": []}, [])
+
+
+def test_skill_dirs_are_absolute_even_from_a_relative_ds_skills(tmp_path, monkeypatch):
+    _fake_skills_os(tmp_path / "skills-os")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DS_SKILLS", "skills-os")
+    dirs = setup.skill_dirs()
+    assert all(p.is_absolute() for p in dirs) and (tmp_path / "skills-os" / "so-capture").resolve() in dirs
