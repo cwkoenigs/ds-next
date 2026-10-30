@@ -264,23 +264,31 @@ def _unserver(cli: Cli, bin: str, s: Server, check: bool, say) -> bool:
     return code == 0
 
 
+def _norm(p: Path) -> Path:
+    """A path as it compares: Windows' `\\\\?\\` prefix (what readlink returns there) dropped, case folded."""
+    s = str(p)
+    s = s.removeprefix("\\\\?\\")
+    return Path(os.path.normcase(s))
+
+
 def _ours(path: Path, roots: list[Path]) -> bool:
     """Does a skill path (a link's raw target, or a listed directory) lie under one of our roots?
     Compared as written and resolved, so a dangling link to a deleted checkout still counts."""
-    candidates = [path]
+    candidates = {_norm(path)}
     try:
-        candidates.append(path.resolve())
+        candidates.add(_norm(path.resolve()))
     except OSError:
         pass
     for root in roots:
+        forms = {_norm(root)}
+        try:
+            forms.add(_norm(root.resolve()))
+        except OSError:
+            pass
         for c in candidates:
-            if c == root or root in c.parents:
-                return True
-            try:
-                if root.resolve() in c.parents:
+            for r in forms:
+                if c == r or r in c.parents:
                     return True
-            except OSError:
-                pass
     return False
 
 
@@ -327,7 +335,7 @@ def _unlinks(cli: Cli, bin: str, check: bool, say) -> bool:
         _, listed = _run([bin, "skill", "list"])
         for line in listed.splitlines():
             path = line.strip().lstrip("-").strip()
-            if not path.startswith(("/", "~")) or not _ours(Path(path).expanduser(), roots):
+            if not path or not Path(path).expanduser().is_absolute() or not _ours(Path(path).expanduser(), roots):
                 continue
             if check:
                 say(f"skill /{Path(path).name}: would remove {path}")
