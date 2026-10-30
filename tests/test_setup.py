@@ -268,7 +268,7 @@ def _claude_env(tmp_path, monkeypatch, registry, which):
 
 
 def test_remove_leaves_a_code_server_that_runs_something_else(tmp_path, monkeypatch):
-    registry = {"ds": f"{tmp_path}/venv/bin/ds-next mcp", "code": "/opt/other/code-server serve"}
+    registry = {"ds": f"{tmp_path / 'venv' / 'bin' / 'ds-next'} mcp", "code": "/opt/other/code-server serve"}
     _claude_env(tmp_path, monkeypatch, registry, {"claude": "/bin/claude", "ds-code": "/npm/bin/ds-code"})
     said: list[str] = []
     assert setup.remove("claude", False, said.append)
