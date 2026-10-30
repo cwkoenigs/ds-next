@@ -3,6 +3,8 @@ model, for scripts, hooks and CI — same glyphs and columns, colour only on a T
 from __future__ import annotations
 
 import asyncio
+import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -103,6 +105,8 @@ def _report(repo: Path, rep) -> None:
         out.print(S.labelled("pending", p))
     for sid, why in rep.declined.items():
         out.print(S.labelled("declined", f"{sid} · {why}" + (" · past revisit" if sid in rep.overdue else "")))
+    for n in rep.notes:
+        out.print(S.labelled("uses", n))
     for e in rep.errors:
         _err(e)
     if rep.pending:
@@ -264,14 +268,40 @@ def ask(prompt: str = typer.Argument(..., help="the request; @file reads it from
     asyncio.run(go())
 
 
+def refresh_canon(root: Path, timeout: float = 10.0) -> str:
+    """Fast-forward the canon clone, so a session reads the index the pipeline last wrote (canon
+    adr-002) rather than the one from the owner's last pull. Returns "" when it did, or one sentence
+    on why not; never raises and never waits past `timeout`. DS_CANON_PULL=0 skips it."""
+    if os.environ.get("DS_CANON_PULL", "1") == "0":
+        return ""
+    if not (root / ".git").exists():
+        return f"canon: {root} is not a git clone; the index is as on disk"
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_SSH_COMMAND": "ssh -o BatchMode=yes"}
+    try:
+        r = subprocess.run(["git", "-C", str(root), "pull", "-q", "--ff-only"], capture_output=True, text=True,
+                           timeout=timeout, check=False, env=env)
+    except subprocess.TimeoutExpired:
+        return f"canon: pull took longer than {timeout:.0f}s (offline?); the index is as on disk"
+    except OSError as e:
+        return f"canon: git did not run ({e}); the index is as on disk"
+    if r.returncode:
+        why = ((r.stderr or r.stdout).strip().splitlines() or ["git pull failed"])[-1]
+        return f"canon: not fast-forwarded ({why}); the index is as on disk"
+    return ""
+
+
 @app.command()
 def mcp() -> None:
-    """Serve the knowledge-base tools over stdio MCP, for any MCP client (the same tools the agents get)."""
+    """Serve the knowledge-base tools over stdio MCP, for any MCP client (the same tools the agents get).
+    Fast-forwards the canon clone first, quietly; DS_CANON_PULL=0 skips that."""
     from mcp.server.stdio import stdio_server
 
     from .agent import SERVER, create_sdk_mcp_server, tools
 
-    server = create_sdk_mcp_server(SERVER, tools=tools(Canon(), Skills(), Path.cwd()))["instance"]
+    canon = Canon()
+    if note := refresh_canon(canon.root):
+        print(note, file=sys.stderr)              # stdout is the MCP stream; clients log stderr
+    server = create_sdk_mcp_server(SERVER, tools=tools(canon, Skills(), Path.cwd()))["instance"]
 
     async def serve() -> None:
         async with stdio_server() as (read, write):

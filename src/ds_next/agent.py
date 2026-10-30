@@ -20,7 +20,7 @@ from .kb import Canon, Skills
 from .sdk import Message, PermissionResultAllow, PermissionResultDeny, create_sdk_mcp_server, tool
 
 SERVER = "ds"
-READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status",
+READ_ONLY = ("canon_list", "canon_read", "skills_list", "skill_read", "project_status", "repo_graph",
              "scaffold_list", "scaffold_get", "block_list", "block_get", "snowflake_search",
              "code_search", "code_get")
 WRITES = ("scaffold_project", "adopt_repo", "block_add", "code_add", "capture")
@@ -114,7 +114,28 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
         return _text(json.dumps({"summary": r.summary(), "type": r.type, "outputs": r.outputs,
                                  "tags": r.tags, "adopted": r.adopted,
                                  "declined": r.declined, "pending": r.pending,
-                                 "overdue_declines": r.overdue, "errors": r.errors}, indent=1))
+                                 "overdue_declines": r.overdue, "notes": r.notes, "errors": r.errors,
+                                 "graph": canon.repo_graph(r.repo) or _no_graph(canon, r.repo)}, indent=1))
+
+    @tool("repo_graph", "The cross-repo graph from the canon's index: with `repo`, what that repo provides, "
+          "uses and is used by (repo, file and line); with `what` (a command, name or path, or part of one), "
+          "who provides it and who uses it; with neither, the repo at the working directory. Use it before "
+          "changing a command, a served name or a path another repo may depend on.",
+          _schema(repo="a registered repo's name", what="a provided command, name or path, or part of one"))
+    async def repo_graph(args):
+        if not canon.repos:
+            return _text(_no_graph(canon, ""))
+        what = str(_arg(args, "what", "query")).strip()
+        if what:
+            return _text(_graph_what(canon.repos, what))
+        name = str(_arg(args, "repo", "name")).strip()
+        if not name:
+            here = reconcile.find_repo(cwd)
+            if here is None:
+                return _text(f"{cwd} is not a ds repo; pass repo or what. Registered: "
+                             + ", ".join(r["name"] for r in canon.repos.get("repos", [])))
+            name = reconcile.repo_name(here)
+        return _text(_graph_repo(canon, name))
 
     @tool("scaffold_list", "List the canon's project types (scaffolds): id, version, status, type, the "
           "outputs a repo of that type produces, menu path, tags.", {})
@@ -340,9 +361,52 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
                      f"merge request (GitLab) in the canon with it, wherever [world] in ~/.ds/config.toml "
                      f"says the team's repos live.")
 
-    return [canon_list, canon_read, skills_list, skill_read, project_status, scaffold_list, scaffold_get,
+    return [canon_list, canon_read, skills_list, skill_read, project_status, repo_graph, scaffold_list, scaffold_get,
             scaffold_project, adopt_repo, block_list, block_get, block_add, code_search, code_get, code_add,
             snowflake_search, capture]
+
+
+def _no_graph(canon: Canon, name: str) -> str:
+    if not canon.repos:
+        return "the canon's index has no repos section yet: its pipeline writes it (canon adr-002)"
+    return f"{name} is not in the canon's registry (canon/repos/{name}.toml)"
+
+
+def _edge(e: dict) -> str:
+    where = ", ".join(e.get("where", [])[:3]) + (", …" if e.get("count", 0) > 3 else "")
+    how = ("declared" if e.get("declared") else "undeclared") + (f", mentioned {e['count']}x" if e.get("count") else "")
+    return f"{e['what']}  [{how}]  {where}".rstrip()
+
+
+def _graph_repo(canon: Canon, name: str) -> str:
+    """One repo's place in the graph, for a model: provides, uses, used by, and what the report says."""
+    g = canon.repo_graph(name)
+    if g is None:
+        return _no_graph(canon, name) + "; registered: " + ", ".join(r["name"] for r in canon.repos.get("repos", []))
+    def tables(t: dict) -> str:
+        return "; ".join(f"{k}: {', '.join(v)}" for k, v in t.items()) or "nothing declared"
+
+    lines = [f"{name} @ {g['commit']} (graph compiled {canon.repos.get('generated', '?')})",
+             f"provides: {tables(g['provides'])}", f"uses: {tables(g['uses'])}",
+             "used by:" if g["used_by"] else "used by: nobody declares or mentions what it provides"]
+    lines += [f"  {e['from']}: {_edge(e)}" for e in g["used_by"]]
+    lines += [f"unresolved: uses {u['uses']}: {u['what']} (not among what {u['uses']} provides)" for u in g["unresolved"]]
+    lines += [f"undeclared: mentions {e['to']}: {_edge(e)}" for e in g["undeclared"]]
+    lines += [f"unused: provides {w}, used by nobody" for w in g["unused"]]
+    return "\n".join(lines)
+
+
+def _graph_what(section: dict, what: str) -> str:
+    """Who provides something and who uses it, by its text or part of it."""
+    q = what.lower()
+    provided = [(r["name"], e) for r in section.get("repos", []) for es in r.get("provides", {}).values()
+                for e in es if q in e.lower()]
+    edges = [e for e in section.get("edges", []) if q in e.get("what", "").lower()]
+    if not provided and not edges:
+        return f"nothing in the graph provides or uses {what!r}"
+    lines = ["provided by: " + (", ".join(f"{n} ({e})" for n, e in provided) or "nobody declares it")]
+    lines += [f"  {e['from']} -> {e['to']}: {_edge(e)}" for e in edges] or ["  used by nobody"]
+    return "\n".join(lines)
 
 
 def code_tools(cwd: Path) -> str:
@@ -393,6 +457,8 @@ Rules:
   for a repo that cannot take the canon-lib dependency. Before building anything, read the gotchas
   (canon_list marks them) whose tags match the work: they are mistakes already made here once.
 - When a skill fits the request, skill_read it and follow it.
+- Before changing a command, a served name or a path another repo may run or read, repo_graph says
+  who depends on it, across the team's repos.
 {code_tools(cwd)}
 - When the session uncovers something the team should remember, offer to capture it.
 - Be brief. This is a terminal.
