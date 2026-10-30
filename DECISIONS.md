@@ -213,3 +213,11 @@ canon as standards; this file links them with `[[id]]` rather than restating the
   registry, the links and the rules and leaves the rest; a second remove still succeeds; Cortex adds
   and removes by path. 168 tests pass.
 - **Review date:** when a fourth agent CLI is added, to see whether `CLIS` still describes it.
+- **Revised 2026-10-29, after an external review (Codex, #16):** remove only unregisters a `ds` or
+  `code` that runs our command and names one that does not; a `code` registration outlives ds-code's
+  removal and still comes off by its command name; allow rules are written only for servers that
+  registered; remove unlinks every link into ds-next's skills or skills-os, dangling ones included, and
+  leaves all others; `permissions` of an odd shape (null, a list, a string) are tolerated; skill paths
+  are absolute even from a relative `DS_SKILLS`. Not taken: locking settings.json against a concurrent
+  agent write (a one-shot CLI with a `.bak`), and telling a failed `mcp get` from "not registered"
+  (the CLIs' exit codes do not distinguish them).
