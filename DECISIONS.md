@@ -355,3 +355,38 @@ canon as standards; this file links them with `[[id]]` rather than restating the
 - **Validation:** `tests/test_core.py::test_pointers_reach_blocks_and_scaffolds_too`; the canon's own
   `ds-next reconcile` passes once its three example lines are backticked.
 - **Review date:** 2026-11-30.
+
+## local-023: `decide` is the pen: it records an adopt or a decline, and the reading happens in the browser
+
+- **Status:** Accepted
+- **Date:** 2026-10-30
+- **Context:** Four places in ds-next and two in the canon's docs said "open ds-next and run /status
+  to adopt". `/status` only reports. After a repo joins, nothing in ds-next adopted or declined a
+  single standard: the only writer of `[standards.*]` tables was `adopt --adopt-all`, all or nothing,
+  at join time only. The owner met this with 21 to 25 pending standards in three freshly adopted
+  repos and no way to answer but a text editor. They also pointed out that a terminal is a poor place
+  to read twenty standards; the docs site (`/docs`, docs-ds) is where the canon is readable.
+- **Options considered:**
+  1. **Make `/status` interactive**, one standard at a time with its text in the terminal: the
+     reading problem stays, and a form in a chat is the worst of both.
+  2. **Let the agent edit the manifest from the conversation**: the format is small, but a tool that
+     writes a precise table is better than a model typing TOML, and the system prompt forbids the
+     model from writing manifests for good reason.
+  3. **One writer, two doors, reading elsewhere:** chosen. `reconcile.decide` writes the table
+     (status, version, by, on; a decline adds reason and revisit, 90 days out by default), replacing
+     one that exists, checking every id and the reason before touching the file. `ds-next decide` is
+     the command; `decide_standard` is the same function as an agent tool, a write that asks, so a
+     session can record "adopt all but cicd" once the user has read them. `--all` takes every pending
+     standard, for a repo written under these rules. Every hint now points at reading in `/docs` and
+     deciding with `decide`.
+- **Decision:** as in 3. `decide` lives in reconcile.py beside the check that reads what it writes,
+  and is that module's one writer. The 90-day default is the one the canon's guide has promised.
+- **Consequences:** the negotiation ADR-000 describes exists: read a standard as a page, answer with
+  one line, and the manifest, the hook and the audit all see the answer. A repo written under the
+  standards is adopted in one command. The scaffolded AGENTS.md text changes for new repos; the ones
+  already written keep the old sentence until regenerated.
+- **Validation:** `tests/test_decide.py`: adopt two, decline one with a reason and the default revisit,
+  reconcile reports them; `--all` takes the pending set and skips a stale block; an existing table is
+  replaced in place and the rest of the file is untouched; refusals (unknown id, no ids, decline
+  without reason, bad revisit, bad action, no manifest) write nothing; the CLI and the tool both.
+- **Review date:** 2026-11-30.

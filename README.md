@@ -109,7 +109,7 @@ form approves exactly what you submitted; if the model changes a value, you appr
 | `/canon [id\|tags]` | list standards, or read one | no |
 | `/skills [name]` | list skills-os procedures, or read one | no |
 | `/so-<skill> [context]` | the agent reads that skill and follows it | yes |
-| `/status` | reconcile the current repo | no |
+| `/status` | reconcile the current repo; `ds-next decide adopt <id…>` or `decide decline <id> --reason …` records your answer to a pending standard, `decide_standard` does the same in chat | no |
 | `/docs` | build with docs-ds and serve on a local port | no |
 | `/captures` | drafts waiting to become canon merge requests | no |
 | `/effort [level]` | thinking effort, `low` by default for speed; resumes the same session | no |

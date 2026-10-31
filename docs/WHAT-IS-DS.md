@@ -32,6 +32,7 @@ subcommand exposes that knowledge base to Claude Code as tools:
 | `block_add`, `block_get`, `block_list` | store and list reusable blocks |
 | `code_add`, `code_get`, `code_search` | store and search code snippets |
 | `project_status` | report a repo's `.ds/manifest.toml` state |
+| `decide_standard` | record the user's adopt or decline of a standard in `.ds/manifest.toml` (asks) |
 | `repo_graph` | who provides and who uses a command, name or path across the team's repos (canon adr-002) |
 | `snowflake_search` | search Snowflake objects |
 

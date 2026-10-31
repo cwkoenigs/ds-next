@@ -575,7 +575,7 @@ def adopt(repo: Path, a: Adoption, canon: Canon | None = None, skills: Skills | 
     """An existing repository joins the system: its manifest, an AGENTS.md (or the standards
     section added to the one it has), a DECISIONS.md if it has none, and the pre-push hook. The
     README and everything else stay as they are. Every applicable standard is pending until the
-    owner adopts or declines it from /status, unless `adopt_all`. Returns what was written."""
+    owner records a decision with `ds-next decide`, unless `adopt_all`. Returns what was written."""
     repo = Path(repo).expanduser()
     if repo.is_symlink():
         raise ValueError(f"refusing to write into {repo}: it is a symbolic link")
@@ -618,7 +618,7 @@ def adopt(repo: Path, a: Adoption, canon: Canon | None = None, skills: Skills | 
     section = (f"{ADOPT_MARKER} {today} -->\n## Standards\n\n"
                + (f"This repo follows {ids}.\n" if adopt_all else
                   f"Standards that apply here, each pending until the owner adopts or declines it in "
-                  f"`.ds/manifest.toml` (`/status` in ds-next): {ids}.\n"))
+                  f"`.ds/manifest.toml` (`ds-next decide` records each; `/status` shows them): {ids}.\n"))
     agents = _inside(repo, "AGENTS.md")
     if agents.exists():
         text = agents.read_text(errors="replace")
