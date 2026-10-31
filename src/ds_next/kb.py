@@ -74,6 +74,7 @@ class Standard:
     status: str
     path: str
     kind: str = "standard"        # or "gotcha": a lesson, adopted like any standard
+    default: str = "ask"          # adopt: in force in every repo it applies to unless declined; ask: pending until decided (adr-003)
 
     def applies(self, tags: list[str] | tuple[str, ...]) -> bool:
         return any(p == "*" or any(fnmatch.fnmatchcase(t, p) for t in tags) for p in self.applies_to)
@@ -157,7 +158,8 @@ class Canon:
             self._stamp = stamp
             self._standards = {
                 s["id"]: Standard(s["id"], int(s["version"]), s["title"], tuple(s["applies_to"]),
-                                  s.get("owner", ""), s.get("status", ""), s["path"], s.get("kind", "standard"))
+                                  s.get("owner", ""), s.get("status", ""), s["path"], s.get("kind", "standard"),
+                                  s.get("default", "ask"))
                 for s in data["standards"]}
             self._blocks = {
                 b["id"]: Block(b["id"], int(b["version"]), b["title"], b["module"], tuple(b["requires"]),
@@ -171,8 +173,9 @@ class Canon:
                 for s in data.get("scaffolds", [])}
             self._code = {s["id"]: s for s in data.get("code", [])}
             self._repos = data.get("repos") or {}
+            self._adoption = data.get("adoption") or {}
         return {"standards": self._standards, "scaffolds": self._scaffolds, "blocks": self._blocks,
-                "code": self._code, "repos": self._repos}
+                "code": self._code, "repos": self._repos, "adoption": self._adoption}
 
     @property
     def standards(self) -> dict[str, Standard]:
@@ -196,6 +199,19 @@ class Canon:
         """The cross-repo graph (canon adr-002): index.json's `repos` section as the canon's pipeline
         wrote it (generated, repos, edges, report), or {} before it has run."""
         return self._index()["repos"]
+
+    @property
+    def adoption(self) -> dict:
+        """The org-wide roll-up (adr-003): every standard against every registered repo, as the canon's
+        pipeline computed it (standards, repos), or {} before it has run."""
+        return self._index()["adoption"]
+
+    def adoption_of(self, sid: str) -> str:
+        """One line for a standard: how many registered repos are adopted, declined, pending; '' without the roll-up."""
+        row = self.adoption.get("standards", {}).get(sid)
+        if not row:
+            return ""
+        return f"{len(row['adopted'])} repos adopted, {len(row['declined'])} declined, {len(row['pending'])} pending"
 
     def repo_graph(self, name: str) -> dict | None:
         """One registered repo's place in the graph: what it provides and uses, who uses what it

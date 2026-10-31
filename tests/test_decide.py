@@ -42,9 +42,9 @@ def test_all_pending_takes_the_rest_and_skips_blocks(tmp_path, canon):
     repo = repo_with(tmp_path, '\n[standards.testing]\nstatus = "adopted"\nversion = 1\nby = "Ann"\non = "2026-10-30"\n'
                                '\n[blocks.block-demo]\nversion = 1\n')
     pending_before = reconcile.check(repo, canon, TODAY).pending
-    assert pending_before == ["adr-000 v1", "error-handling v1"]
+    assert pending_before == ["error-handling v1"]                 # adr-000 is in force by default; only the asking one waits
     done = reconcile.decide(repo, "adopt", [], by="Ann", canon=canon, today=TODAY, all_pending=True)
-    assert done == ["adr-000", "error-handling"]
+    assert done == ["error-handling"]
     rep = reconcile.check(repo, canon, TODAY)
     assert rep.pending == [] and rep.blocks == ["block-demo v1"]
     with pytest.raises(ValueError, match="name the standards"):

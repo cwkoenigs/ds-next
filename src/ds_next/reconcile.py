@@ -1,9 +1,10 @@
 """`reconcile`: offline, deterministic, read-only. Compares a repo's manifest with the canon.
 `decide` is the one writer here: it records the owner's adopt or decline in the manifest.
 
-Pending standards are information. Only a malformed manifest, a broken pointer or a [uses] entry
-that names nothing the canon's registry knows is an error, so the pre-push hook never blocks on a
-standard nobody has decided on yet.
+A standard whose default is `adopt` is in force in every repo it applies to unless the repo declined
+it (adr-003); only a `default: ask` standard waits for an answer. Pending standards are information.
+Only a malformed manifest, a broken pointer or a [uses] entry that names nothing the canon's registry
+knows is an error, so the pre-push hook never blocks on a standard nobody has decided on yet.
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ class Report:
     repo: str
     tags: list[str] = field(default_factory=list)
     adopted: list[str] = field(default_factory=list)
+    defaulted: list[str] = field(default_factory=list)    # of the adopted: in force by the standard's default, not an entry
     declined: dict[str, str] = field(default_factory=dict)
     pending: list[str] = field(default_factory=list)      # "id vN" strings
     overdue: list[str] = field(default_factory=list)      # declines past their revisit date
@@ -41,7 +43,8 @@ class Report:
 
     def counts(self) -> str:
         """The numbers without the name: 26 adopted · 1 declined · 0 pending (errors only when there are any)."""
-        s = f"{len(self.adopted)} adopted · {len(self.declined)} declined · {len(self.pending)} pending"
+        s = (f"{len(self.adopted)} adopted" + (f" ({len(self.defaulted)} by default)" if self.defaulted else "")
+             + f" · {len(self.declined)} declined · {len(self.pending)} pending")
         return s + (f" · {len(self.errors)} errors" if self.errors else "")
 
 
@@ -288,8 +291,15 @@ def check(repo: Path, canon: Canon | None = None, today: dt.date | None = None) 
             continue
         if status == "adopted" and (_version(e) or 0) >= std.version:
             rep.adopted.append(std.id)
-        elif not any(err.startswith(f"{std.id}:") for err in rep.errors):
-            rep.pending.append(f"{std.id} v{std.version}")
+        elif any(err.startswith(f"{std.id}:") for err in rep.errors):
+            continue
+        elif std.default == "adopt":
+            # in force by the standard's default (adr-003): nobody has to answer, and an older explicit
+            # adoption is carried forward; only a decline says otherwise
+            rep.adopted.append(std.id)
+            rep.defaulted.append(std.id)
+        else:
+            rep.pending.append(f"{std.id} v{std.version}" + (f" (adopted at v{_version(e)})" if status == "adopted" else ""))
 
     _check_blocks(manifest, canon, rep)
     _check_uses(manifest, canon, rep)

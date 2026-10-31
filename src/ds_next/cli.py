@@ -110,8 +110,8 @@ def _report(repo: Path, rep) -> None:
     for e in rep.errors:
         _err(e)
     if rep.pending:
-        out.print(S.hint("read them first (/docs in ds-next renders the canon; ds-next canon read <id> prints one), then "
-                         "ds-next decide adopt <id…>, or decide decline <id> --reason '…'; decide adopt --all takes every pending one"))
+        out.print(S.hint("these ask for an answer: read each (/docs in ds-next, or ds-next canon read <id>), then "
+                         "ds-next decide adopt <id…> or decide decline <id> --reason '…'; decide adopt --all answers them all"))
 
 
 @app.command()
@@ -165,10 +165,11 @@ def canon_list(tags: str = typer.Option("", help="comma-separated repo tags")):
     """Standards, optionally only those that apply to the tags."""
     c = Canon()
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-    out.print(Text(f"  {'standard':<18}{'v':<4}{'applies to':<20}title", style="dim"))
+    out.print(Text(f"  {'standard':<18}{'v':<4}{'default':<9}{'applies to':<20}title", style="dim"))
     for s in (c.applicable(tag_list) if tag_list else sorted(c.standards.values(), key=lambda s: s.id)):
-        out.print(Text.assemble("  ", (f"{s.id:<18}", "bold"), (f"{s.version:<4}", "muted"),
-                                f"{', '.join(s.applies_to)[:19]:<20}", (s.title, "muted")))
+        org = c.adoption_of(s.id)
+        out.print(Text.assemble("  ", (f"{s.id:<18}", "bold"), (f"{s.version:<4}", "muted"), (f"{s.default:<9}", "muted"),
+                                f"{', '.join(s.applies_to)[:19]:<20}", (s.title, "muted"), (f"  · {org}" if org else "", "dim")))
 
 
 @canon_app.command("read")
