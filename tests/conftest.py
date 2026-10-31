@@ -6,22 +6,22 @@ import pytest
 
 from ds_next.kb import Canon, Skills
 
-STANDARDS = [
-    ("adr-000", 1, "Repo knowledge system", ["*"]),
-    ("testing", 1, "Testing and QA", ["*"]),
-    ("error-handling", 1, "Error handling", ["service", "package"]),
-    ("idempotency", 1, "Idempotency", ["service", "pipeline"]),
+STANDARDS = [   # (id, version, title, applies_to, default): the two org rules are in force by default, the other two ask
+    ("adr-000", 1, "Repo knowledge system", ["*"], "adopt"),
+    ("testing", 1, "Testing and QA", ["*"], "adopt"),
+    ("error-handling", 1, "Error handling", ["service", "package"], "ask"),
+    ("idempotency", 1, "Idempotency", ["service", "pipeline"], "ask"),
 ]
 
 
 def make_canon(root: Path, bump: dict[str, int] | None = None) -> Canon:
     root.mkdir(parents=True, exist_ok=True)
     rows = []
-    for sid, v, title, applies in STANDARDS:
+    for sid, v, title, applies, default in STANDARDS:
         v = (bump or {}).get(sid, v)
         (root / f"{sid}.md").write_text(f"---\nid: {sid}\nversion: {v}\n---\n\n# {title}\n\nBody of {sid}.\n")
         rows.append({"id": sid, "version": v, "title": title, "applies_to": applies, "owner": "o",
-                     "supersedes": None, "status": "accepted", "hash": "x", "path": f"{sid}.md"})
+                     "supersedes": None, "status": "accepted", "hash": "x", "path": f"{sid}.md", "default": default})
     scaffolds = []
     for sid, status, path, tags, typ, outs in [
             ("python-cli", "accepted", ["python", "cli"], ["python", "package", "cli"], "cli", []),

@@ -390,3 +390,37 @@ canon as standards; this file links them with `[[id]]` rather than restating the
   replaced in place and the rest of the file is untouched; refusals (unknown id, no ids, decline
   without reason, bad revisit, bad action, no manifest) write nothing; the CLI and the tool both.
 - **Review date:** 2026-11-30.
+
+## local-024: A standard's default decides what nobody answered; the manifest keeps the exceptions
+
+- **Status:** Accepted
+- **Date:** 2026-10-30
+- **Context:** canon adr-003. After three repos joined, each showed 21 to 25 pending standards and the
+  only answer was a command per repo (local-023). The owner's objection: a line to run in every repo
+  is not a process a team can roll out; at ten thousand repos it is nothing. adr-000 had designed
+  the roll-up and left the default implicit, so a standard nobody answered stayed a question.
+- **Options considered:**
+  1. **Have the pipeline write adopted entries into every manifest by merge request:** says what the
+     default already says, ten thousand times, with a review queue of nothing.
+  2. **Default everything to adopt in reconcile, no per-standard choice:** a standard that is a real
+     choice per repo would be claimed by repos it does not fit.
+  3. **The standard carries `default: adopt` or `ask`; reconcile computes the standing; the manifest
+     holds only entries someone typed:** chosen. An entry wins; a decline answers the version it was
+     made against; an older explicit adoption of a default-adopt standard is carried forward; a
+     default-ask standard is pending until decided, exactly as before.
+- **Decision:** `Standard.default` from the index (absent in an old index means `ask`, so an old
+  canon behaves as it did). `Report.defaulted` names the adopted-by-default standards and `counts()`
+  says "25 adopted (25 by default)" so the distinction is never hidden. `project_status` gains
+  `adopted_by_default`. `Canon.adoption` and `adoption_of(sid)` read the pipeline's `adoption`
+  section, and `canon_list` (tool and command) show each standard's org-wide row. The scaffolded
+  AGENTS.md sentence says in force by default unless declined. `decide` is unchanged: it is for
+  declines and for standards that ask.
+- **Consequences:** joining a repo is `ds-next adopt`, and that is the whole per-repo cost. Rolling out
+  a standard is writing it; every machine's next reconcile says it is in force. The pre-push nudge
+  shows only standards that ask. "Adopted" now means held to, not complied with; compliance is still
+  adr-000's `--apply`, unbuilt.
+- **Validation:** `tests/test_core.py::test_drift_is_pending_not_an_error` (the default carries a
+  bumped standard forward, an asking one is pending with its old version named),
+  `test_adopt_writes_only_the_system_files_and_the_defaults_are_in_force`, the decide tests on the
+  asking standard; 190 pass. On this Mac all five repos report 0 pending with nothing typed.
+- **Review date:** 2026-11-30, with adr-003.

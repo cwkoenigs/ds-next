@@ -81,7 +81,8 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
         tags = [t.strip() for t in str(_arg(args, "tags")).split(",") if t.strip()]
         stds = canon.applicable(tags) if tags else sorted(canon.standards.values(), key=lambda s: s.id)
         return _text("\n".join(f"{s.id} v{s.version} {s.status or 'proposed'}{' (gotcha)' if s.kind == 'gotcha' else ''} "
-                               f"[{', '.join(s.applies_to)}] {s.title}" for s in stds))
+                               f"default={s.default} [{', '.join(s.applies_to)}] {s.title}"
+                               + (f"  ({canon.adoption_of(s.id)})" if canon.adoption_of(s.id) else "") for s in stds))
 
     @tool("canon_read", "Read one standard or gotcha in full, by id (as canon_list prints it).",
           _schema(id="the standard's id, e.g. gotcha-validation", name="alias of id", standard="alias of id"))
@@ -112,7 +113,7 @@ def tools(canon: Canon, skills: Skills, cwd: Path, connection: str | None = None
             return _text(f"{cwd} is not a ds repo (no .ds/manifest.toml up the tree)")
         r = reconcile.check(repo, canon)
         return _text(json.dumps({"summary": r.summary(), "type": r.type, "outputs": r.outputs,
-                                 "tags": r.tags, "adopted": r.adopted,
+                                 "tags": r.tags, "adopted": r.adopted, "adopted_by_default": r.defaulted,
                                  "declined": r.declined, "pending": r.pending,
                                  "overdue_declines": r.overdue, "notes": r.notes, "errors": r.errors,
                                  "graph": canon.repo_graph(r.repo) or _no_graph(canon, r.repo)}, indent=1))
@@ -476,9 +477,10 @@ Rules:
   a change. Do not re-ask what the draft already answers.
 - An existing repository joins the system with adopt_repo, never by writing its manifest or
   AGENTS.md yourself. Call it with no overrides, show what it detected, and let the user correct it.
-- A pending standard is adopted or declined with decide_standard, after the user has read it
-  (canon_read here, or /docs in the browser) and said which way. Never edit the manifest for that,
-  and never decide on the user's behalf; a decline carries their reason.
+- A standard with default=adopt is in force in every repo it applies to unless that repo declined
+  it; nobody has to adopt it. A default=ask standard, or a decline, is recorded with decide_standard
+  after the user has read it (canon_read here, or /docs in the browser) and said which way. Never
+  edit the manifest for that, and never decide on the user's behalf; a decline carries their reason.
 - If the user asks for a project in chat instead, propose a complete draft in one message
   (scaffold, name, purpose, and suggested values for the rest), ask for one confirmation, and
   create it the same way. Never ask one question at a time. Never write project files yourself.

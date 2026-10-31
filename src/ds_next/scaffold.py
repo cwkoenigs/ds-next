@@ -617,8 +617,8 @@ def adopt(repo: Path, a: Adoption, canon: Canon | None = None, skills: Skills | 
     ids = ", ".join(f"[[{s.id}]]" for s in stds) or "none"
     section = (f"{ADOPT_MARKER} {today} -->\n## Standards\n\n"
                + (f"This repo follows {ids}.\n" if adopt_all else
-                  f"Standards that apply here, each pending until the owner adopts or declines it in "
-                  f"`.ds/manifest.toml` (`ds-next decide` records each; `/status` shows them): {ids}.\n"))
+                  f"Standards that apply here, in force by default unless declined in `.ds/manifest.toml` "
+                  f"(`ds-next decide` records a decline or an answer to one that asks; `/status` shows them): {ids}.\n"))
     agents = _inside(repo, "AGENTS.md")
     if agents.exists():
         text = agents.read_text(errors="replace")

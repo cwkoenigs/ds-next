@@ -107,9 +107,11 @@ def test_write_refuses_nonempty(tmp_path, canon, skills):
 def test_drift_is_pending_not_an_error(tmp_path, canon, skills):
     a = scaffold.Answers(**ANSWERS)
     scaffold.write(a, tmp_path / a.name, canon, skills, git=False)
-    newer = make_canon(tmp_path / "canon2", bump={"testing": 2})
+    newer = make_canon(tmp_path / "canon2", bump={"testing": 2, "error-handling": 2})
     r = reconcile.check(tmp_path / a.name, newer)
-    assert r.ok and r.pending == ["testing v2"]
+    # testing is in force by default, so its new version carries the repo forward; error-handling asks
+    assert r.ok and r.pending == ["error-handling v2 (adopted at v1)"]
+    assert "testing" in r.adopted and r.defaulted == ["testing"]
 
 
 def test_broken_pointer_and_bad_decline_are_errors(tmp_path, canon, skills):
@@ -220,7 +222,7 @@ def test_detect_reads_the_stack_and_the_readme(tmp_path):
     assert (d.test_cmd, d.lint_cmd) == ("npm test", "npm run typecheck")
 
 
-def test_adopt_writes_only_the_system_files_and_leaves_standards_pending(tmp_path, canon, skills):
+def test_adopt_writes_only_the_system_files_and_the_defaults_are_in_force(tmp_path, canon, skills):
     repo = _node_repo(tmp_path / "shop")
     before = {p.name: p.read_text() for p in (repo / "README.md", repo / "CLAUDE.md")}
     a = scaffold.detect(repo)
@@ -232,11 +234,11 @@ def test_adopt_writes_only_the_system_files_and_leaves_standards_pending(tmp_pat
     assert m["repo"]["name"] == "shop" and m["repo"]["tags"] == ["cli", "python"] and "standards" not in m
     agents = (repo / "AGENTS.md").read_text()
     assert "Project instructions: `CLAUDE.md`" in agents and "[[adr-000]]" in agents and "[[testing]]" in agents
-    assert "pending until the owner adopts" in agents
+    assert "in force by default unless declined" in agents
     assert "docs/adr/" in (repo / "DECISIONS.md").read_text()
     assert (repo / ".git" / "hooks" / "pre-push").stat().st_mode & 0o111 or os.name == "nt"   # Windows has no executable bit; git runs hooks regardless
     r = reconcile.check(repo, canon)
-    assert r.ok and r.pending == ["adr-000 v1", "testing v1"] and r.adopted == []
+    assert r.ok and r.pending == [] and r.adopted == ["adr-000", "testing"] == r.defaulted   # nothing to type
     with pytest.raises(FileExistsError, match="already in the system"):
         scaffold.adopt(repo, a, canon, skills)
 
